@@ -1,0 +1,138 @@
+// Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
+// at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
+// busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
+// See ./Copyright for additional notices.
+
+This is the README for IREP.  See also etc/doc/ for additional
+documentation.
+
+The Intermediate Representation (IR) is a tool for constructing a set
+of C/C++ and Fortran data structures, and a tool for reading Lua tables
+into those structures.  It is built around the observation that the
+textual representation of Lua table elements can frequently be mapped
+directly into a C/C++ struct, or a Fortran derived type.  Suppose a Lua
+table constructor is given as follows:
+
+  t1 = {
+    t2 = {
+      x = 42,
+    }
+  }
+
+With appropriate prior definitions, we could alternatively write:
+
+  t1.t2.x = 42 -- Lua
+  t1.t2.x = 42 // C/C++
+  t1%t2%x = 42  ! Fortran
+
+The fundamental operation of the IR reader is to read Lua tables,
+construct a string like the Fortran example above, and pass it to an
+interpreter which executes an assignment statement in the compiled
+languages.
+
+
+TYPE NAME CONVENTION
+
+I have adopted the general convention of naming types by prepending
+"irt_" to the name of a given table.  So if "material" is the name of a
+Lua table, the type name of its associated structure in the host code
+(C/C++ or Fortran) will be "irt_material".  This convention extends
+to the subtables.  Material may have a subtable "opacity", which has
+a subtable "server".  Suppose you want to work with the contents of a
+particular "server" table.  The naming convention makes it easy to get
+a reference to any structure in the IR:
+
+  irt_server *my_svr = &material[1].opacity.server;
+  printf("Library: %s\n", strndup(IR_STR(my_svr->library)));
+
+
+LIMITATIONS, CONSTRAINTS
+
+Lua tables can express combinations of data and data types in ways that
+are not easy to represent in C/C++ or Fortran structured data objects.
+The IR itself is shared between C/C++ and Fortran using Fortran's
+ISO_C_BINDING machinery.  This is not generally an issue for integer,
+double, and logical variables, but it does affect the representation
+of character strings.  There are some additional limitations imposed
+by the Fortran namelist statement, and limitations in how well actual
+compilers support all the features.  Assignments are effectively parsed
+according to Fortran rules.  The major difference for C/C++ (and Lua)
+programmers to recall is that Fortran identifiers are case-insensitive.
+
+
+STATIC DECLARATION
+
+The IR is statically declared, so the size of all array types is given
+and fixed at compile time.
+
+
+STRINGS
+
+Character strings are stored in the IR as blank-delimited arrays, one
+character per array element.  String vectors are stored as two-dimensional
+arrays of characters.  There is no trailing NULL.  String length is
+currently limited to 2048 characters.  It is usually best to access
+character strings using one of the convenience functions provided.
+If table "t" contains a scalar string "ss" and a vector of strings "vs":
+
+  // C++
+  std::string my_ss(IR_STR(t.ss));    // Access scalar string
+  std::string my_vs(IR_STR(t.vs[0])); // First element of vector string
+
+  ! Fortran
+  character(len=64) :: my_ss, my_vs
+  my_ss = trim(ir_fstr(t%ss))          ! Access scalar string
+  my_vs = trim(ir_fstr(t%vs(:,1)))     ! First element of vector string
+
+IR_STR and ir_fstr basically depend on "sizeof", or its Fortran
+equivalent.  So they can be used only with operands for which sizeof
+will return a sensible value.  Note that default values are given only
+for scalar strings in the IR header files.
+
+
+COMPILERS
+
+Gfortran received a critical patch at version 4.7.4, that allowed
+it to properly read derived type components in namelist statements.
+That version or later is necessary for the IR to function correctly.
+IBM bgxlf and bgxlc, version 14.1, were tested, and appear correct.
+Intel ifort 14.0 was tested, and appears to give correct results.
+
+
+CALLBACK FUNCTIONS
+
+The IREP lua_cb_dd_data struct has an integer component "fref", which
+nominally contains a Lua reference to the associated Lua callback
+function.  We overload the meaning of the possible fref values to cover
+several cases of interest:
+
+  Value of fref     Meaning
+  -----------------------------------------------------------
+  LUA_REFNIL        No entry in the Lua input
+  LUA_NOREF         Lua input is a constant function, a number
+  <something else>  Lua input is a real Lua function
+
+Fref is statically initialized to LUA_REFNIL.  If no actual Lua input
+for the given function name is found, this will therefore be the value
+of fref.
+
+If an input entry is found, we check the type.  If it is a number or array
+of numbers, the value of fref is set to LUA_NOREF, and the number(s)
+are stored in the structure's "const_val" component.  If the entry is
+instead a Lua function, we put the function in the Lua registry and
+store a reference to it in fref.
+
+In particular, we can use the value of fref to infer whether or not any
+number or function was read:
+
+  fref == LUA_REFNIL ==> No entry of any kind was available;
+  fref != LUA_REFNIL ==> Some entry (number or function) was read.
+  fref == LUA_NOREF  ==> One or more numbers (a constant function) was read.
+
+
+EXAMPLES
+
+See etc/ex1 for a working example using IREP from C/C++.  In etc/ex2,
+the same example is worked out in Fortran.  It is also possible to write
+codes that include both C/C++ and Fortran objects, all using a common
+IREP data store.

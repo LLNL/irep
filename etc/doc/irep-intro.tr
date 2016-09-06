@@ -1,0 +1,485 @@
+.\" groff -p -mm %s
+.\" Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
+.\" at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
+.\" busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
+.\" See ../../Copyright for additional notices.
+.de TP
+.sp 5
+..
+.VM 0 1
+.de CR
+\f[CR]\s-1\\$1\s+1\fP
+..
+.PH ""
+.PF "'L. Busby'%'19Aug2016'"
+.S 12 14
+.de VS
+\f[CB]\s-2
+.in +0.25i
+.nf
+..
+.de VE
+.in -0.25i
+\fR\s+2
+.fi
+..
+.nr Ec 1
+.de EX
+.ce
+.sp 0.1i
+\fBExample \\n(Ec. \\$1\fP
+.nr Ec +1
+..
+.DS C
+.S +2
+An \f[BI]Intermediate Representation\fP for Structured Input
+.S -2
+.DE
+.H 1 "Abstract"
+The \fIIntermediate Representation\fP
+(or \fIIR\fP or \fIIREP\fP)
+is a tool to simplify reading some kinds of external program input,
+a means to organize the input into native language structures,
+and a way to share those structures among program modules
+written in either C/C++ or Fortran.
+It can handle several varieties of ``Plain Old Data''
+and has mechanisms that can extend its abilities beyond POD.
+It requires access to C and Fortran compilers,
+and follows standards for those languages.
+No external scripts nor preprocessing beyond
+the usual \fIcpp(1)\fP are necessary.
+A reader for tables written in the \fILua\fP programming language
+is part of this implementation.
+.H 1 "Introduction"
+.H 2 "Sharing Data Among Lua, C/C++ and Fortran"
+.P
+Lua tables,
+and table constructors,
+are a flexible way to define program input in text form.
+With a little care,
+and some knowledge of the expected input values,
+it is easy to roughly map a Lua table into structured data types
+for C/C++ and Fortran:
+.DS
+.VS
+  Lua             C/C++                   Fortran
+\l'6.0i'
+t = {           typedef struct irt_t {   type, bind(c) :: irt_t
+  a = 1,          int a;                   integer(c_int) :: a = 1
+  b = {2.2,3.3},  double b[2];             real(c_double) :: b(2)
+  c = "foo",      char c[16];              character(c_char) :: c(16)
+  d = true,       _Bool d;                 logical(c_bool) :: d = .true.
+}               } irt_t;                 end type irt_t
+.VE
+.EX "A Simple Structure in Three Languages"
+.DE
+.P
+This works best for (but is not strictly limited to)
+``Plain Old Data'' (POD).
+For purposes of this paper,
+\fIPOD\fP is a scalar variable or 1-dimensional vector of
+type \fIinteger\fP, \fIdouble\fP, \fIstring\fP, or \fIboolean\fP,
+where those type names take their informal meaning.
+.P
+The Fortran \fIISO_C_BINDING\fP lets us map structures
+more or less directly between C/C++ and Fortran.
+The C pre-processor specifies the IR in a language-neutral way.
+Here is the same structure,
+written as an entry in the IR:
+.DS
+.VS
+Beg_struct(irt_t)      // Begin structure declaration
+   ir_int(a,1)         // Scalar integer with default value = 1
+  Vir_dbl(b,2)         // Vector double with 2 elements
+   ir_str(c,16,"foo")  // Scalar string, maxlen=16, default = "foo"
+   ir_log(d,true)      // Scalar boolean, default = true
+End_struct(irt_t)      // End structure
+.VE
+.EX "IR Definition of Structure From Ex. 1"
+.DE
+Structures in the IR are defined in a header file using macros as above.
+When the file is included from C/C++ source,
+the macros output a C/C++ \fIstruct\fP declaration.
+From Fortran,
+the output is the equivalent \fIderived type\fP.
+The Fortran version \fIdefines\fP and (for scalars) initializes the structures,
+while C/C++ \fIdeclares\fP them as \fIextern\fP objects.
+There is one instance, shared, of any IR variable in the data
+segment of a running program.
+.H 2 "Structured Data"
+.P
+The IR includes a \f[CB]\s-2Structure\s+2\fP macro
+that works in the expected way to allow arbitrarily
+nested C/C++ and Fortran structures:
+.DS
+.VS
+  IREP                  C/C++            Fortran
+\l'5.0i'
+Beg_struct(irt_T1)      ...              ...
+  Structure(irt_T2,x)   irt_T2 x;        type(irt_T2) :: x
+End_struct(irt_T1)      ...              ...
+.VE
+.EX "Nested Structures in the IR"
+.DE
+.H 2 "Using IR Data in the Host Code"
+.P
+After the IR has been defined,
+and after data has been read from the Lua input file into the IR,
+the host code can access data using native language operations:
+.DS
+.VS
+-- Set the value in Lua.
+mat[1].EOS.table.number = 1018
+.sp 0.1i
+// Read the value from C/C++.
+int n = mat[1].EOS.table.number;
+.sp 0.1i
+! Read the value from Fortran.
+integer :: n
+n = mat(1)%EOS%table%number
+.VE
+.EX "Setting and Reading a Value"
+.DE
+.H 2 "Reading Data Into the IR"
+.P
+The compiled \fIdata store\fP in
+the IR is independent of whatever means might be used to
+load its values.
+It does not depend on Lua
+or any other ``table reader'' that might be useful in some situation.
+However, this implementation does use Lua as
+its table reader.
+The operation of the table reader can be simply described.
+By definition,
+the layout, names, and types in the IR
+data store
+stipulate the expected form of a set
+of \fIwell known tables\fP in the Lua input.
+The WKT list is just the set of global Lua table names that the host
+code expects to find in the problem input.
+.P
+For each name in the set of WKT,
+the IR reader opens the Lua table and reads it recursively.
+The reader keeps track of the full path name of each element
+as it works.
+Some elements in the table are ``leaf nodes'',
+in the sense that their value is POD.
+For example, the Lua table in Ex. 1
+has an element ``t.a'', whose value is ``1''.
+Whenever a leaf node is discovered,
+the reader constructs a string such as ``\fC\s-1&ir_input t%a=1/\s+1\fP''.
+Further processing of that string is discussed in the next section.
+For now, it is more important to note that the IR data store,
+by construction,
+also contains an element named ``t'',
+with a subelement of type integer named ``a''.
+(If it doesn't, that's an error, by definition.)
+Assuming there is no problem,
+the assignment is made,
+and reading proceeds to the end of this particular WKT.
+So the IR Lua reader
+knows little or nothing about the IR data that corresponds to
+the table it is reading.
+It just constructs strings that look like assignment statements,
+and ``throws them over the wall'' to the next phase,
+where they either work or they don't.
+.H 2 "The Modern Fortran \f[BI]NAMELIST\fP Statement"
+.P
+The Fortran \fInamelist\fP statement dates to the 1960's.
+Like Cray pointers,
+most vendors supported it even though it did not enter the standard
+until 1990.
+(Cray pointers have never been standardized.)
+In the 2003 Fortran standard,
+a crucial addition was made:
+\fINamelist\fP now works for ``internal files'',
+Fortran-speak for character strings.
+The namelist mechanism was originally designed to parse an
+external text file that essentially looks like a series of
+assignment statements:
+.DS
+.VS
+&input
+x1 = 41
+x2 = 42
+/
+.VE
+.EX "A NAMELIST Text File"
+.DE
+That's fine; it still works the same way.
+However, with the \fIinternal file\fP option,
+we can alternatively construct a string of similar form,
+and parse it:
+.DS
+.VS
+namelist /input/ x1, x2
+character(len=64) :: s = "&input x1 = 41, x2 = 42 /"
+read(s, nml=input, iostat=ios) ! ios == 0 implies no error.
+.VE
+.EX "NAMELIST, Reading Internal File"
+.DE
+The effect of that \fIread\fP statement is to parse the string into tokens,
+look up the addresses of the program variables named ``x1'',
+``x2'', convert the ascii strings ``41'', ``42'' into integers,
+type check that \fIx1\fP and \fIx2\fP were declared integer,
+and stuff the numbers into those respective addresses.
+This is basically equivalent to an \fIeval\fP mechanism for
+a large subset of Fortran assignment statements.
+With the ISO_C_BINDING,
+we can utilize \fInamelist\fP functionality
+and share the variables
+from C/C++ in a standard
+compliant way.
+With the IR (or any similar) reader,
+we can construct strings of the given form
+from Lua tables,
+then read them one at a time into the corresponding program variables.
+While \fInamelist\fP is not perfect,
+its functionality for this
+application is not trivial to replace.
+.H 1 "Advantages, Disadvantages"
+.P
+There are hardly any features of the IR that are purely good or bad.
+Here's a list of some features,
+with discussion.
+.AL
+.LI
+The IR is designed to be usable from either C/C++ or Fortran,
+or both together.
+One instance of the IR data store is simultaneously accessible.
+Variables have the same name in both languages,
+modulo variations in the syntax for accessing structured types,
+and possible variations in array indexing.
+.LI
+The IR is statically declared.
+The size of elements in the data store is fixed
+at compile time.
+The IR cannot directly contain pointer values or allocatable elements.
+These constraints might improve in the future,
+or with some additional programming.
+The IR data structures are relatively small,
+so static allocation is probably not important.
+The IR reader code is also small \- less than 400 lines of code overall.
+.LI
+C/C++ and Fortran programs reference variables in the IR using native
+language operations.
+There is much less need to use the Lua C API in parts of
+the host code that execute after Lua tables have been read.
+The host decides when to read Lua tables into the IR.
+.LI
+Overall input error handling happens in three phases:
+First, the Lua input is parsed, typically using
+\fIluaL_loadfile\fP and \fIlua_pcall\fP.
+If this phase completes without error,
+the Lua input is \fIsyntactically\fP correct.
+.P
+Phase two is
+handled when we read the well-known Lua table.
+If this phase completes without errors,
+we know that the Lua input matched the names defined in the data store,
+their types,
+and, for vectors, the maximum number of values.
+Both phase one and two report errors automatically,
+with no extra programming effort.
+Phases 1 and 2 together are quick,
+so an MPI program could do them first in the rank 0 process.
+Then, if no errors, the remaining ranks can proceed.
+.P
+Phase three, semantic verification, happens as
+the host code accesses the IR data store and checks that
+the set of options specified
+by the inputs,
+plus the default values,
+is sensible.
+.LI
+The IR provides a way to set default values for scalars.
+Not every variable needs to appear in the Lua input.
+.LI
+Not everything in a Lua table can be easily represented in the IR.
+An escape mechanism is available for special cases.
+.LE
+.H 1 "Designing the User Interface"
+.P
+Lua tables and Lua variables can be quite different
+from C/C++ or Fortran structures and variables.
+Sometimes variety is the spice of life,
+but it can also cause problems.
+Here are some Lua idioms that are difficult to mimic in the IR data store:
+.AL
+.LI
+Polymorphic element values:
+Lua is happy to allow both ``x=1'' and ``x="one"'' (at different times)
+in the same table.
+This is hard to emulate in the IR,
+because C/C++ and Fortran variables can't change type.
+One place where we do allow polymorphic elements is
+our implementation of callback functions:
+.DS
+.VS
+f = 3
+f = { 1, 2, 3 } -- max len is 9 elements
+f = function() return 3 end
+.VE
+.EX "Callback Functions Can Be Polymorphic"
+.DE
+Our application happens to frequently use \fIconstant\fP callback functions.
+It is thus convenient to allow scalar or array values
+for a callback,
+as shown in the first two examples above.
+Callback functions require some special handling already,
+so this case does not present much extra trouble for the IR reader.
+In general, however,
+it's a good idea to limit polymorphic elements in the
+user interface.
+.LI
+Tables with both record and array parts:
+.DS
+.VS
+a = { 3,2,1, x=4 }
+.VE
+.EX "Array With Both String and Integer Keys"
+.DE
+That is, ``a[1] == 3'', and ``a.x == 4''.
+There is no easy way to handle this case with the IR,
+because ``a'' is neither a vector, nor is it a structured type.
+It's some of both.  Special handling is required for a case like this.
+.LI
+Arrays with mixed types:
+.DS
+.VS
+a = { 3,2,1, "liftoff" }
+.VE
+.EX "Array Containing Mixed Type Values"
+.DE
+In this case, ``a'' is a vector, but its elements don't
+have any single type.
+Arrays in C/C++ and Fortran cannot have elements
+of more than one type.
+.LE
+.P
+In designing the user interface,
+we can choose, case by case,
+whether to let the constraints imposed by the IR
+also constrain or shape the Lua interface.
+By its nature, the IR rewards simplicity in user interface design.
+.H 1 "Some Usage Notes"
+.H 2 "Input Organization"
+.P
+Overall, the IR for a given project contains three kinds of
+project-specific data.
+First,
+as discussed previously,
+there is a set of type declarations that describe the layout
+of the well known tables in the Lua input.
+Second, the callback functions that are shared between the host
+code and Lua need to be specified.
+For example, here is a ``materials'' table with
+a ``configuration'' subtable containing callback functions:
+.DS
+.VS
+static struct { const char *pat; int nprm; int nret; } cbf_tbl[] = {
+  { "^materials[?*].configuration.density$",         4, 1 },
+  { "^materials[?*].configuration.surface$",         4, 1 },
+  { "^materials[?*].configuration.energy$",          4, 1 },
+  { "^materials[?*].configuration.volume_fraction$", 4, 1 },
+}
+.VE
+.EX "Declaring Callback Functions in ir_special.h"
+.DE
+That set of statements builds a table that associates a \fIpattern\fP
+matching one or more expected names in the Lua input.
+It also specifies the number of parameters (4) and the
+number of return values (1) that the
+callback function or functions will handle.
+.P
+Third, there may be some elements in the IR that require
+special handling.
+This is usually due to issues of the sort discussed above
+in \fIDesigning the User Interface\fP.
+These elements are also
+specified in a separate table, using patterns.
+The table associates each pattern with a compiled handler function,
+custom written to handle this particular case:
+.DS
+.VS
+static struct { const char *pat; sh_handler h; } sh_tbl[] = {
+  { "^outputs$", ir_ignore }, // Ignore outputs table.
+}
+.VE
+.EX "The IR Special Handling Table"
+.DE
+The pattern in the example
+matches only the single word ``outputs''.
+The handler function (\fIir_ignore\fP) is
+pre-defined by the IR,
+because this is expected to be a common request.
+It directs the IR reader to silently ignore the matched element,
+and thus everything underneath it.
+Presumably, the host code will then make other arrangements to
+read the \fIoutputs\fP table.
+.H 2 "The \f[BI]ir_read\fP and \f[BI]ir_exists\fP Functions"
+.P
+In addition to defining IR input data,
+the host code is responsible for reading the well known tables.
+The function provided for this task is \fIir_read\fP.
+For example, in C, we might read the \fImaterials\fP table:
+.DS
+.VS
+int n = ir_read(L, "materials");
+if (n != 0) { printf("ERROR: %d\\n", n); exit(1); }
+.VE
+.EX "Reading the Materials Table"
+.DE
+Ir_read returns the total number of errors it encountered.
+For well known tables that may be optional,
+the \fIir_exists\fP function is provided to allow the host code
+to query whether a given table element is in the Lua state before
+attempting to read it.
+.H 2 "Patterns"
+.P
+The IR includes a small regular expression parser,
+originally due to R. Pike.
+It handles a simple subset of regular expressions.
+One small modification meets the special needs of this project.
+Specifically, the IR pattern matcher uses ``?'' instead of ``.'' (dot)
+to match any literal character.
+(This convention is the same one used by command shells,
+and for similar reasons.)
+Lua extended table names use ``.'' to separate components,
+so it is more useful in our context to treat dot as a literal character.
+.H 2 "Callback Functions"
+.P
+The IR includes a standard structure \fIlua_cb_dd_data\fP that can store
+the relevant information needed to register a Lua callback function
+with the host code.
+See the example code for usage information.
+.H 2 "Strings"
+.P
+Sharing strings between Fortran and C/C++ is easier than it once was.
+That said,
+reading strings from the IR requires extra care for both languages.
+Fortran defines strings in either of two ways:
+A scalar variable with a maximum length,
+or an array,
+with one character per element.
+Interoperability rules require the second method,
+and that is how strings are stored in the IR, blank delimited.
+The maximum length is part of the original declaration,
+explicit in both languages,
+so \fIsizeof\fP (C/C++) and \fIsize\fP (Fortran) will return the
+proper value.
+(There is no trailing NULL character.)
+The IR provides convenience functions and macros to
+simplify some common string operations:
+.DS
+.VS
+int ir_nblen(char *p, int n);           // Non-blank string length
+#define IR_LEN(s) ir_nblen(s,sizeof(s)) // C/C++
+#define IR_LEN(s) ir_nblen(s,size(s))    ! Fortran
+#define IR_STR(s) s,IR_LEN(s)              (Either language)
+std::string myfoo(IR_STR(t.c));    // Declare/initialize std::string.
+character(len=64) :: myfoo         ! Declare a Fortran scalar.
+myfoo = trim(ir_fstr(IR_STR(t.c))) ! Initialize it.
+.VE
+.EX "Some Common String Operations"
+.DE
