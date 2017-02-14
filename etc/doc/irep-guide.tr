@@ -246,6 +246,8 @@ is rewritten for the parser as a literal array of single characters.
 For the scalar case,
 part 1 is otherwise fairly simple:
 Change the component separator from '.' to '%'.
+IREP adds a terminating null character at the end of the non-blank
+portion of the string value.
 Then (part 2) we blank fill the right end of the string,
 using the original string length (3\(pl1\(eq4 in the example)
 to compute where the blanks begin.
@@ -311,23 +313,21 @@ int my_a = irep::t.a; // Copy an IREP value to a local C++ variable.
 Strings are stored in the IR back end
 as statically declared character arrays.
 Therefore each one has a maximum length set at compile time.
-They are delimited by zero or more blanks,
-with no final \fINULL\fP character.
+They are delimited by a null character,
+followed by zero or more blanks.
 .P
 Fortran can represent strings in two ways.
 One is a \fIscalar\fP variable of type character,
 with a specified maximum length.
 The second is an \fIarray\fP of type character,
 each element of which contains one character.
-Each form is blank delimited.
+Each form is blank delimited,
+although note that IREP adds a terminating null character.
 .P
 Sharing strings between Fortran and C/C++ using
 the ISO_C_BINDING requires Fortran to use the second form.
 Most Fortran character intrinsic functions operate on scalar strings,
 not array-type strings.
-Thus strings in the IR are not in the most natural form for either language.
-It requires some extra effort (a macro and/or function call) from each language
-to copy an IR string into the most convenient form for C/C++ or Fortran.
 .\" ======================================================================
 .H 1 "The Assignment Parser in Detail"
 .P

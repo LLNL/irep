@@ -463,12 +463,12 @@ A scalar variable with a maximum length,
 or an array,
 with one character per element.
 Interoperability rules require the second method,
-and that is how strings are stored in the IR, blank delimited.
+and that is how strings are stored in the IR.
 The maximum length is part of the original declaration,
 explicit in both languages,
 so \fIsizeof\fP (C/C++) and \fIsize\fP (Fortran) will return the
 proper value.
-(There is no trailing NULL character.)
+(IREP adds a trailing NULL character at the end of the non-blank part.)
 The IR provides convenience functions and macros to
 simplify some common string operations:
 .DS

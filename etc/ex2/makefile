@@ -9,6 +9,8 @@ ir.dir = ../..
 # Required: List the well-known tables to include in libIR.a.
 ir.wkt := $(wildcard wkt_*.h)
 
+compiler = gnu
+
 include $(ir.dir)/irep.mk
 
 # Required: Locate Lua headers and libraries:
@@ -16,8 +18,6 @@ lua = $(HOME)/$(SYS_TYPE)/lua515
 
 Lua_include = $(lua)/include
 Lua_lib = $(lua)/lib
-
-# Gnu compilers (gcc, g++, gfortran) require version 4.7.4 or greater.
 
 .DEFAULT_GOAL := test
 
@@ -30,7 +30,7 @@ test: $(prog)
 	./$(prog) input.lua
 
 $(prog): $(obj)
-	$(FC) -o $@ $(obj) -L$(Lua_lib) -L. -lIR -llua -ldl
+	$(FC) -o $@ $(obj) -L$(Lua_lib) -L. -lIR -llua $($(compiler).lflags)
 
 .PHONY: clean displayC displayF
 clean: ir_clean; rm -f $(prog) $(obj)
