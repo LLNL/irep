@@ -27,7 +27,7 @@
 #define ir_int(ID,DV) integer(c_int) :: ID = DV
 #define ir_log(ID,DV) logical(c_bool) :: ID = .DV.
 #define ir_str(ID,LEN,DV) character(c_char) :: ID(LEN) = \
-   transfer([character(kind=c_char,len=LEN)::DV],[c_char_'a'])
+   transfer([character(kind=c_char,len=LEN)::DV +/+/ '\0'],[c_char_'a'])
 
 // Vir_{dbl,int,log,str}: Vector double, integer, logical, string.
 // NELEM: number of elements in the vector.
