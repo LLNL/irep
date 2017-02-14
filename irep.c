@@ -21,7 +21,7 @@ extern "C" {
 typedef struct sbuf_t { char frep[BSZ], lrep[BSZ]; } sbuf_t;
 typedef int (*sh_handler)(lua_State *L, sbuf_t *sp, char *fp, char *lp);
 static int iir_read(lua_State *L, sbuf_t *sb, char *fp, char *lp, int sh);
-static int read_nml(const char *frep, const char *val);
+static int read_nml(const char *frep, const char *val, int addnull);
 
 static int ir_error(const char *format, ...) {
   va_list argp;
@@ -67,14 +67,14 @@ static int match(const char *regexp, const char *text) {
 }
 
 // Construct an assignment statement and pass it to namelist read.
-static int read_nml(const char *frep, const char *val) {
+static int read_nml(const char *frep, const char *val, int addnull) {
   char buf[BSZ];
-  extern int ir_rd_nml(char *, int);
-  (void)snprintf(buf, BSZ, "&ir_input %s = %s /", frep, val);
+  extern int ir_rd_nml(char *, int, int);
+  (void)snprintf(buf, BSZ, "&ir_input %s = %s", frep, val);
 #ifdef IR_DEBUG
   (void)fprintf(stderr, "read_nml: %s\n", buf);
 #endif
-  return ir_rd_nml(buf, (int)strlen(buf));
+  return ir_rd_nml(buf, (int)strlen(buf), addnull);
 }
 
 // Read a Lua callback function into a struct lua_cb_dd_data, at index i.
@@ -86,11 +86,11 @@ static int read_cb(lua_State *L, sbuf_t *sb, char *fp, char *lp, int i) {
   if (tv == LUA_TNUMBER || tv == LUA_TTABLE || tv == LUA_TFUNCTION) {
     (void)snprintf(fp, BSZ+(sb->frep-fp), "%%nprm");
     (void)snprintf(val, sizeof(val), "%d", cbf_tbl[i].nprm);
-    if (read_nml(sb->frep, val) != 0) return ir_error(fmt, sb->lrep, val);
+    if (read_nml(sb->frep, val, 0) != 0) return ir_error(fmt, sb->lrep, val);
 
     (void)snprintf(fp, BSZ+(sb->frep-fp), "%%nret");
     (void)snprintf(val, sizeof(val), "%d", cbf_tbl[i].nret);
-    if (read_nml(sb->frep, val) != 0) return ir_error(fmt, sb->lrep, val);
+    if (read_nml(sb->frep, val, 0) != 0) return ir_error(fmt, sb->lrep, val);
 
     if (tv == LUA_TFUNCTION) {
       fref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -116,7 +116,7 @@ static int read_cb(lua_State *L, sbuf_t *sb, char *fp, char *lp, int i) {
   }
   (void)snprintf(fp, BSZ+(sb->frep-fp), "%%fref");
   (void)snprintf(val, sizeof(val), "%d", fref);
-  if (read_nml(sb->frep, val) != 0) return ir_error(fmt, sb->lrep, val);
+  if (read_nml(sb->frep, val, 0) != 0) return ir_error(fmt, sb->lrep, val);
   return 0;
 }
 
@@ -153,24 +153,24 @@ static int iir_read(lua_State *L, sbuf_t *sb, char *fp, char *lp, int sh) {
         (void)sprintf(dim2, "%s", fp+1);   // the existing dimension, and
         (void)sprintf(fp+1, ":,%s", dim2); // right shift it (now 2nd dim.)
       }
-      if (read_nml(sb->frep, val4) != 0) return ir_error(fmt, sb->lrep, vp);
+      if (read_nml(sb->frep, val4, 1) != 0) return ir_error(fmt, sb->lrep, vp);
 
       // The rest of the string is overfilled with blanks.
-      if (*fp == '(') (void)sprintf(fp, "(%d:,%s", (int)vlen+1, dim2);
-      else            (void)sprintf(fp, "(%d:)",   (int)vlen+1);
+      if (*fp == '(') (void)sprintf(fp, "(%d:,%s", (int)vlen+2, dim2);
+      else            (void)sprintf(fp, "(%d:)",   (int)vlen+2);
       (void)snprintf(val4, BSZ, "%d*' '", BSZ);
-      (void)read_nml(sb->frep, val4); // Ignore error (too many blanks.)
+      (void)read_nml(sb->frep, val4, 0); // Ignore error (too many blanks.)
 
     } else if (tv == LUA_TBOOLEAN) {
       const char *ss = ft[lua_toboolean(L,-1)];
-      if (read_nml(sb->frep, ss) != 0) return ir_error(fmt, sb->lrep, ss);
+      if (read_nml(sb->frep, ss, 0) != 0) return ir_error(fmt, sb->lrep, ss);
 
     } else if (tv == LUA_TNUMBER) {
       double d = lua_tonumber(L,-1);
       int isint = ((d - (double)(int)d) == 0.0);
       if (isint) (void)snprintf(val, BSZ, "%d", (int)d);
       else       (void)snprintf(val, BSZ, "%25.17e", d);
-      if (read_nml(sb->frep, val) != 0) return ir_error(fmt, sb->lrep, val);
+      if (read_nml(sb->frep, val, 0) != 0) return ir_error(fmt, sb->lrep, val);
 
     } else {
       return ir_error("Bad name, missing definition(?): %s", sb->lrep);
@@ -238,7 +238,7 @@ int ir_exists(lua_State *L, const char *s) {
 
 // Non-blank length: Utility function for use by IR_LEN macro.
 int ir_nblen(char *s, int n) {
-  do { --n; } while (s[n] == ' ' && n >= 0);
+  do { --n; } while ((s[n] == ' ' || s[n] == '\0') && n >= 0);
   return n+1;
 }
 

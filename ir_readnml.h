@@ -34,25 +34,29 @@ end interface
 
 contains
 
-! Convert a Fortran array of characters to a scalar Fortran string.
+! Convert a [null-terminated] array of characters to a scalar Fortran string.
 function ir_fstr(s) result(fs)
-  use, intrinsic :: iso_c_binding, only : c_char
+  use, intrinsic :: iso_c_binding, only : c_char, c_null_char
   character(kind=c_char, len=1), intent(in) :: s(:)
   character(kind=c_char, len=size(s)) :: fs
   integer :: i
+  fs = ' '
   do i = 1, len(fs)
+    if (s(i) == c_null_char) exit
     fs(i:i) = s(i)
   enddo
 end function
 
 ! This function is called only from C.
-integer(c_int) function cir_rd(s,n) bind(c, name="ir_rd_nml")
-  integer(c_int), value, intent(in) :: n
+integer(c_int) function cir_rd(s,n, addnull) bind(c, name="ir_rd_nml")
+  integer(c_int), value, intent(in) :: n, addnull
   character(len=1,kind=c_char), intent(in) :: s(n)
-  character(kind=c_char,len=n) :: fs
-  ! Macro below expands ==> table1, table2, ...
+  character(kind=c_char,len=n+8) :: fs
+  ! Macro below (WKT_NML) expands to ==> table1, table2, ...
   namelist /ir_input/ WKT_NML
-  fs = transfer(s,fs)
+  fs = transfer(s, fs)
+  if (addnull == 0) fs(n+1:) = " /"
+  if (addnull == 1) fs(n+1:) = "'\0' /"
   read(fs, nml=ir_input, iostat=cir_rd)
 end function
 
