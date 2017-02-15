@@ -53,8 +53,7 @@ is part of this implementation.
 .H 1 "Introduction"
 .H 2 "Sharing Data Among Lua, C/C++ and Fortran"
 .P
-Lua tables,
-and table constructors,
+Lua tables, and table constructors,
 are a flexible way to define program input in text form.
 With a little care,
 and some knowledge of the expected input values,

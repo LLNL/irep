@@ -44,8 +44,7 @@ A Programming Guide to the IREP
 .P
 The core of the \fIIntermediate Representation\fP \- IREP \-
 is less than 400 lines of code and header files.
-However, it combines ideas
-and techniques from C,
+However, it combines ideas and techniques from C,
 C++, Fortran, the Lua C library, the C preprocessor,
 and the Fortran ISO_C_BINDING.
 Interaction with Lua's stack-oriented C library is a key aspect.

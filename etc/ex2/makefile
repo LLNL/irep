@@ -11,6 +11,7 @@ ir.wkt := $(wildcard wkt_*.h)
 
 compiler = gnu
 
+
 include $(ir.dir)/irep.mk
 
 # Required: Locate Lua headers and libraries:

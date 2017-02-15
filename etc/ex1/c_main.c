@@ -25,7 +25,6 @@ using namespace irep;
 // A simple evaluator for IREP callback functions.
 int eval_dd(lua_State *L, lua_cb_dd_data *d, double *x, double *v) {
   int i;
-
   if (d->fref == LUA_NOREF) {
     for (i=0; i < d->nret; ++i) v[i] = d->const_val[i];
     return 0;
