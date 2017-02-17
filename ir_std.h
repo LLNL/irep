@@ -7,10 +7,9 @@
 #define ir_std_h
 #include "ir_macros.h"
 
-#if defined(LANG_FORTRAN)
+#if defined(IREP_LANG_FORTRAN)
 module IR_WKT_NAME
 use, intrinsic :: iso_c_binding
-integer, parameter :: c_dbl = kind(real(1.0, c_double))
 #endif
 
 // Standard types and structures predefined by the IR.
@@ -24,7 +23,7 @@ Beg_struct(lua_cb_dd_data)
  Vir_dbl(const_val,9,0.0)
 End_struct(lua_cb_dd_data)
 
-#if defined(LANG_FORTRAN)
+#if defined(IREP_LANG_FORTRAN)
 end module
 #endif
 

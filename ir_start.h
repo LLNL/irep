@@ -7,7 +7,7 @@
 
 // Include this file at the beginning of each wkt_*.h file.
 
-#if defined(LANG_FORTRAN)
+#if defined(IREP_LANG_FORTRAN)
 module IR_WKT_NAME
 use, intrinsic :: iso_c_binding
 use :: ir_std

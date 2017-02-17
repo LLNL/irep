@@ -53,9 +53,9 @@ LINK = $($(compiler).link)
 
 fppflags_extra = 
 Lua_include = $(HOME)/$(SYS_TYPE)/lua515/include
-FPPFLAGS = -DLANG_FORTRAN -I$(Lua_include) -I$(ir.dir) $(fppflags_extra)
-COMPILE.c = $(CC) -c $(CFLG) -DLANG_C -I$(Lua_include) -I$(ir.dir) -I.
-COMPILE.f = $(FC) -c $(FFLG) -DLANG_FORTRAN -I$(Lua_include) -I$(ir.dir) -I.
+FPPFLAGS = -DIREP_LANG_FORTRAN -I$(Lua_include) -I$(ir.dir) $(fppflags_extra)
+COMPILE.c = $(CC) -c $(CFLG) -DIREP_LANG_C -I$(Lua_include) -I$(ir.dir) -I.
+COMPILE.f = $(FC) -c $(FFLG) -DIREP_LANG_FORTRAN -I$(Lua_include) -I$(ir.dir) -I.
 
 # Not too much should need to change below this point.
 ir.wobj = $(subst .h,.o,$(notdir $(ir.wkt)))

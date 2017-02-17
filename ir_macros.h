@@ -11,7 +11,7 @@
 // ==================================================================
 // ========================  FORTRAN SECTION  =======================
 // ==================================================================
-#if defined(LANG_FORTRAN)
+#if defined(IREP_LANG_FORTRAN)
 #define Doc(a)
 
 #define ir_wkt(T,ID) type(T), public, target, bind(c) :: ID
@@ -23,7 +23,7 @@
 // ID: the name of the variable.
 // LEN: the number of characters in a string.
 // DV: default value (for ir_log, use "true" or "false".)
-#define ir_dbl(ID,DV) real(c_double) :: ID = DV##_c_dbl
+#define ir_dbl(ID,DV) real(c_double) :: ID = DV##_c_double
 #define ir_int(ID,DV) integer(c_int) :: ID = DV
 #define ir_log(ID,DV) logical(c_bool) :: ID = .DV.
 #define ir_str(ID,LEN,DV) character(c_char) :: ID(LEN) = \
@@ -33,7 +33,7 @@
 // NELEM: number of elements in the vector.
 // A "vector" is also known as a one-dimensional array.
 // Note that string vectors cannot set a default value.
-#define Vir_dbl(ID,NELEM,DV) real(c_double),dimension(NELEM) :: ID = DV##_c_dbl
+#define Vir_dbl(ID,NELEM,DV) real(c_double),dimension(NELEM) :: ID = DV##_c_double
 #define Vir_int(ID,NELEM,DV) integer(c_int),dimension(NELEM) :: ID = DV
 #define Vir_log(ID,NELEM,DV) logical(c_bool),dimension(NELEM) :: ID = .DV.
 #define Vir_str(ID,LEN,NELEM) character(c_char),dimension(LEN,NELEM) :: ID
@@ -49,7 +49,7 @@
 // ==================================================================
 // ===========================  C SECTION  ==========================
 // ==================================================================
-#elif defined(LANG_C)
+#elif defined(IREP_LANG_C)
 #define Doc(a)
 
 #define IR_LEN(s) ir_nblen(s,(int)sizeof(s))

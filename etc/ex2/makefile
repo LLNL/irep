@@ -35,5 +35,5 @@ $(prog): $(obj)
 
 .PHONY: clean displayC displayF
 clean: ir_clean; rm -f $(prog) $(obj)
-displayC: ; gcc -E -DLANG_C       -I$(ir.dir) $(ir.wkt)
-displayF: ; gcc -E -DLANG_FORTRAN -I$(ir.dir) $(ir.wkt)
+displayC: ; gcc -E -DIREP_LANG_C       -I$(ir.dir) $(ir.wkt)
+displayF: ; gcc -E -DIREP_LANG_FORTRAN -I$(ir.dir) $(ir.wkt)

@@ -10,14 +10,12 @@
 extern "C" {
 #endif
 
-#if defined(LANG_C)
 // These IR functions are intended to be visible in client C/C++ code.
 // (Fortran gets access to them via ir_readnml interface declarations.)
 extern int ir_nblen(char *s, int n);
 extern int ir_read(lua_State *L, const char *t);
 extern int ir_exists(lua_State *L, const char *t);
 extern int ir_rtlen(lua_State *L, const char *s);
-#endif
 
 #if defined(__cplusplus)
 }

@@ -5,7 +5,7 @@
 
 // Include this file at the end of each wkt_*.h file.
 
-#if defined(LANG_FORTRAN)
+#if defined(IREP_LANG_FORTRAN)
 end module
 
 #elif defined(__cplusplus)
