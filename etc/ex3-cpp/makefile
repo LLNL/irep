@@ -21,18 +21,18 @@ Lua_lib = $(lua)/lib
 
 .DEFAULT_GOAL := test
 
-obj = c_main.o
-prog = cprog
+obj = cpp_main.o
+prog = cpp_prog
+compile = $(CXX)
+input = input.lua
 
 $(obj): libIR.a
 
 test: $(prog)
-	./$(prog) input.lua
+	./$(prog) $(input)
 
 $(prog): $(obj)
-	$(CC) -o $@ $(obj) -L$(Lua_lib) -L. -lIR -llua -lm -lgfortran -ldl
+	$(compile) -o $@ $(obj) -L$(Lua_lib) -L. -lIR -llua -lm -lgfortran -ldl
 
-.PHONY: clean displayC displayF
+.PHONY: clean
 clean: ir_clean; rm -f $(prog) $(obj)
-displayC: ; gcc -E -DLANG_C       -I$(ir.dir) $(ir.wkt)
-displayF: ; gcc -E -DLANG_FORTRAN -I$(ir.dir) $(ir.wkt)

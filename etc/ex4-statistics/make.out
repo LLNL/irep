@@ -1,0 +1,41 @@
+STK: call iir_unread: 1: (table): 0x62f5e0|
+Call iir_unread: statistics
+STK: BEGIN iir_unread: 1: (table): 0x62f5e0|
+BEGIN: lrep=statistics, ep->name=statistics
+  Struct: ep->ti=5
+  RECURSE: i=0, lrep=statistics.test1, ep->name=statistics, nep->name=test1
+STK: BEGIN iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|
+    BEGIN: lrep=statistics.test1, ep->name=test1
+      Struct: ep->ti=4
+      RECURSE: i=0, lrep=statistics.test1.tst1foo, ep->name=test1, nep->name=tst1foo
+STK: BEGIN iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+        BEGIN: lrep=statistics.test1.tst1foo, ep->name=tst1foo
+          STRING: ep->name=tst1foo, val=default tst1foo
+STK: END1 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+        END: errcnt=0
+STK: END2 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+      RECURSE: i=1, lrep=statistics.test1.t1d, ep->name=test1, nep->name=t1d
+STK: BEGIN iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+        BEGIN: lrep=statistics.test1.t1d, ep->name=t1d
+          DOUBLE: ep->name=t1d, val=8.3
+STK: END1 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+        END: errcnt=0
+STK: END2 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+      RECURSE: i=2, lrep=statistics.test1.test2, ep->name=test1, nep->name=test2
+STK: BEGIN iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+        BEGIN: lrep=statistics.test1.test2, ep->name=test2
+          Struct: ep->ti=3
+STK: VSTRUCT: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|4: (table): 0x634650|
+          VSTRUCT: i=0, lrep=statistics.test1.test2, ep->name=test2, nep->name=test2
+*****ERROR here
+    END: errcnt=1
+STK: END2 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+  RECURSE: i=1, lrep=statistics.foo, ep->name=statistics, nep->name=foo
+STK: BEGIN iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+    BEGIN: lrep=statistics.foo, ep->name=foo
+      STRING: ep->name=foo, val=default foo
+STK: END1 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+    END: errcnt=0
+STK: END2 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|3: (table): 0x63b8e0|
+END: errcnt=1
+STK: END2 iir_unread: 1: (table): 0x62f5e0|2: (table): 0x63b860|

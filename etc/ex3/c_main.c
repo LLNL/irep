@@ -16,41 +16,47 @@
 #include "ir_extern.h"
 #include "wkt_table1.h"
 #include "wkt_table4.h"
+#include <time.h>
+#include <sys/time.h>
 
 #if defined(__cplusplus)
 extern "C" {
 using namespace irep;
 #endif
 
-// A simple evaluator for IREP callback functions.
-int eval_dd(lua_State *L, lua_cb_dd_data *d, double *x, double *v) {
-  int i;
+int eval(lua_State *L, lua_cb_data *d, double *x, double *v) {
+  int i, nprm, nret;
 
+  if (d->fref == LUA_REFNIL) return 1;
+
+  nprm = ir_nprm(d->npnr);
+  nret = ir_nret(d->npnr);
   if (d->fref == LUA_NOREF) {
-    for (i=0; i < d->nret; ++i) v[i] = d->const_val[i];
+    double *data = (double *)d->data;
+    for (i=0; i < nret; ++i) v[i] = data[i];
     return 0;
   }
 
   // Push the function onto the stack.
   lua_rawgeti(L, LUA_REGISTRYINDEX, d->fref);
-  for (i=0; i < d->nprm; i++) lua_pushnumber(L, x[i]); // Push args.
+  for (i=0; i < nprm; i++) lua_pushnumber(L, x[i]); // Push args.
 
-  if (lua_pcall(L, d->nprm, d->nret, 0) != 0)
+  if (lua_pcall(L, nprm, nret, 0) != 0)
     return luaL_error(L, "error: %s", lua_tostring(L,-1));
 
-  for (i=0; i < d->nret; i++) {
-    if (lua_type(L, i-d->nret) != LUA_TNUMBER)
+  for (i=0; i < nret; i++) {
+    if (lua_type(L, i-nret) != LUA_TNUMBER)
       return luaL_error(L, "error: expected number for return value: %d", i+1);
-    v[i] = lua_tonumber(L, i - d->nret);
+    v[i] = lua_tonumber(L, i - nret);
   }
-  lua_pop(L, d->nret); // Pop return values.
+  lua_pop(L, nret); // Pop return values.
   return 0;
 }
 
 int main(int argc, char *argv[]) {
   lua_State *L = luaL_newstate();
-  int ios, i, n;
-  double x[3] = { 2.0, 3.0, 4.0 }, v;
+  int ios, i, n, j, ii;
+  double x[3] = { 2.0, 3.0, 4.0 }, v=0.0, v2[2];
 
   if (argc < 2) {
     fprintf(stderr, "Usage: %s *.lua\n", argv[0]);
@@ -67,17 +73,20 @@ int main(int argc, char *argv[]) {
   printf("table1.d = %g\n", table1.d);
   printf("table1.b = %d\n", table1.b);
 
-  char *ss = strndup(IR_STR(table1.s));
+  char *ss = strdup(IR_STR(table1.s));
   printf("table1.s = \"%s\"\n", ss);
 
-  (void) eval_dd(L, &table1.f1, x, &v);
-  printf("table1.f1(%g,%g,%g) = %g\n", x[0],x[1],x[2], v);
+  i = eval(L, &table1.f1, x, &v);
+  if (!i) printf("table1.f1(%g,%g,%g) = %g\n", x[0],x[1],x[2], v);
+  else printf("f1 undefined\n");
 
-  (void) eval_dd(L, &table1.table2[1].f2, x, &v);
-  printf("table1.table2[1].f2(%g,%g,%g) = %g\n", x[0],x[1],x[2], v);
+  i = eval(L, &table1.table2[1].f2, x, &v);
+  if (!i) printf("table1.table2[1].f2(%g,%g,%g) = %g\n", x[0],x[1],x[2], v);
+  else printf("f2 undefined\n");
 
-  (void) eval_dd(L, &table1.table3.f3, x, &v);
-  printf("table1.table3.f3(%g,%g,%g) = %g\n", x[0],x[1],x[2], v);
+  i = eval(L, &table1.table3.f3, x, v2);
+  if (!i) printf("table1.table3.f3(%g,%g,%g) = %g %g\n", x[0],x[1],x[2], v2[0],v2[1]);
+  else printf("f3 undefined\n");
 
   n = sizeof(table1.e)/sizeof(*table1.e);
   printf("\ntable1.e: %d elements, %d given\n", n, ir_rtlen(L, "table1.e"));
@@ -87,8 +96,19 @@ int main(int argc, char *argv[]) {
   ios = ir_read(L, "table4");
   printf("\nREAD TABLE4: ios=%d\n",ios);
   for (i=1; i<=3; i++) {
-    char *ss = strndup(IR_STR(table4[i].name));
-    printf("table4[%d].name = \"%s\"\n", i, ss);
+    char *ss = strdup(IR_STR(table4[i].name));
+    printf("table4[%d].name = \"%s\" (len=%d)\n", i, ss, (int)strlen(ss));
+    lua_rawgeti(L, LUA_REGISTRYINDEX, table4[i].fooref);
+    printf("Type of table4[%d].fooref: %s\n", i,lua_typename(L,lua_type(L,-1)));
+    if (lua_type(L,-1) == LUA_TTABLE) {
+      ii = lua_objlen(L,-1);
+      for (j=1; j<=ii; j++) {
+        lua_rawgeti(L,-1,j);
+        printf("fooref[%d] = %g\n", j,lua_tonumber(L,-1));
+        lua_pop(L,1);
+      }
+    }
+    lua_pop(L,1);
   }
 
   return 0;

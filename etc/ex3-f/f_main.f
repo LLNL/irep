@@ -10,6 +10,7 @@ module mainmod
   integer(kind=c_int), parameter :: LUA_NOREF          =     -2
   integer(kind=c_int), parameter :: LUA_REGISTRYINDEX  = -10000
   integer(kind=c_int), parameter :: LUA_TNUMBER        =      3
+  integer(kind=c_int), parameter :: LUA_TTABLE         =      5
 
   interface fstr
     module procedure fstr_arr, fstr_ptr
@@ -23,6 +24,13 @@ module mainmod
     type(c_ptr), value, intent(in) :: s
   end function strlen_ptr
 
+  function lua_objlen(L, index) bind(c, name="lua_objlen")
+    use, intrinsic :: iso_c_binding, only : c_int, c_ptr, c_size_t
+    type(c_ptr), value :: L
+    integer(kind=c_int), value :: index
+    integer(kind=c_size_t) :: lua_objlen
+  end function
+
   function luaL_newstate() bind(c, name="luaL_newstate")
     use, intrinsic :: iso_c_binding, only : c_ptr
     type(c_ptr) :: luaL_newstate
@@ -33,6 +41,13 @@ module mainmod
     type(c_ptr), value :: L
     character(kind=c_char), dimension(*) :: filename
     integer(kind=c_int) :: luaL_loadfile
+  end function
+
+  function luaL_loadstring(L, s) bind(c, name="luaL_loadstring")
+    use, intrinsic :: iso_c_binding, only : c_ptr, c_int, c_char
+    type(c_ptr), value :: L
+    character(kind=c_char), dimension(*) :: s
+    integer(kind=c_int) :: luaL_loadstring
   end function
 
   function lua_tolstring(L, index, len) bind(c, name="lua_tolstring")
@@ -147,59 +162,103 @@ pure function cstr(s)
 end function
 
 ! A simple evaluator for IREP callback functions.
-subroutine eval_dd(L, d, x, v)
+function eval_vector(L, d, x, v) result(actual_nret)
   use, intrinsic :: iso_c_binding
   use, intrinsic :: iso_fortran_env, only : error_unit
   use ir_std
+  use ir_extern, only: ir_nprm, ir_nret, ir_get_function_name
   implicit none
   type(c_ptr), value, intent(in) :: L
-  type(lua_cb_dd_data), intent(in) :: d
+  type(lua_cb_data), target, intent(in) :: d
   real(c_double), intent(in) :: x(:)
   real(c_double), intent(out) :: v(:)
-  integer :: i
+  integer(c_int) :: i, nprm, nret, actual_nret
+  real(c_double), pointer :: data(:)
+
+  nprm = ir_nprm(d%npnr)
+  nret = ir_nret(d%npnr)
+  actual_nret = nret
 
   if (d%fref == LUA_NOREF) then
-    do i=1,d%nret
-      v(i) = d%const_val(i)
+    if (nret > size(v)) then
+      write(error_unit,'(a,2i6)') "ERROR: v is too small",nret,size(v)
+      stop 1
+    endif
+    call c_f_pointer(d%data,data,[nret])
+    do i=1,nret
+      v(i) = data(i)
     enddo
     return
   endif
 
+  if (nprm > size(x)) then
+    write(error_unit,'(a)') "ERROR: not enough parameters given"
+    stop 1
+  endif
+
   ! Push the function and arguments onto the stack.
   call lua_rawgeti(L, LUA_REGISTRYINDEX, d%fref)
-  do i = 1, d%nprm
+  do i = 1, nprm
     call lua_pushnumber(L, x(i))
   enddo
-  if (lua_pcall(L, d%nprm, d%nret, 0) /= 0) then
+  if (nret .eq. -1) actual_nret = 1
+  if (lua_pcall(L, nprm, actual_nret, 0) /= 0) then
     write(error_unit,'(2a)') "LUA ERROR: ", fstr(lua_tostring(L,-1))
     stop 1
   endif
 
-  do i=1,d%nret
-    if (lua_type(L, i - d%nret - 1) /= LUA_TNUMBER) then
-      write(error_unit,'(2a)') "error: expected number for return value: ", i
+  if (nret .eq. -1) then ! Arbitrary length table expected.
+    if (lua_type(L,-1) /= LUA_TTABLE) then
+      write(error_unit,'(a)') "ERROR: Expected function to return table"
+      write(error_unit,'(2a)') "NAME:",fstr(ir_get_function_name(L,c_loc(d)))
       stop 1
     endif
-    v(i) = lua_tonumber(L, i - d%nret - 1)
-  enddo
-  call lua_pop(L, d%nret) ! Pop args + function.
-end subroutine
+    actual_nret = lua_objlen(L,-1)
+    if (actual_nret > size(v)) then
+      write(error_unit,'(a)') "ERROR: v is too small for table returned"
+      stop 1
+    endif
+    do i=1,actual_nret
+      call lua_rawgeti(L,-1,i)
+      if (lua_type(L,-1) /= LUA_TNUMBER) then
+        write(error_unit,'(a)') "ERROR: table item is not number"
+        stop 1
+      endif
+      v(i) = lua_tonumber(L,-1)
+      call lua_pop(L,1)
+    enddo
+    call lua_pop(L,1)
+
+  else ! Standard return on the stack.
+    do i=1,nret
+      if (lua_type(L, i - nret - 1) /= LUA_TNUMBER) then
+        write(error_unit,'(a)') "error: expected number for return value: "
+        stop 1
+      endif
+      v(i) = lua_tonumber(L, i - nret - 1)
+    enddo
+    call lua_pop(L, nret)
+  endif
+
+end function
 
 end
 
 ! ------------------------------------------------------------------------
 program main
   use, intrinsic :: iso_c_binding
-  use ir_readnml
+  use ir_std
+  use ir_extern
   use wkt_table1
   use wkt_table4
+  use wkt_statistics
   use mainmod
   implicit none
 
   integer :: ios, i, n, ng
-  real(c_double) :: v(1), x(3) = [ 2.0, 3.0, 4.0 ]
+  real(c_double) :: v(3), x(3) = [ 2.0, 3.0, 4.0 ], start
   type(c_ptr) :: L
-  character(len=64) :: arg
+  character(len=64) :: arg, name
 
   L = luaL_newstate()
   call luaL_openlibs(L)
@@ -209,6 +268,7 @@ program main
     stop 0
   endif
   call get_command_argument(1, arg)
+  start = ir_clock()
   if (luaL_loadfile(L, cstr(arg)) .ne. 0) then
     print *, "cannot load file: ", fstr(lua_tostring(L,-1))
     stop 1
@@ -217,25 +277,27 @@ program main
     print *, "cannot run file: ", fstr(lua_tostring(L,-1))
     stop 1
   endif
+  call ir_add_time(1, ir_clock() - start, c_loc(statistics%item1))
 
   if (ir_read(L, cstr("table1")) .ne. 0) stop
+
   print *,"READ TABLE1"
   write(*,"(a,i4)") "table1.i = ", table1%i
   write(*,"(a,f6.2)") "table1.d = ", table1%d
   write(*,"(a,l2)") "table1.b = ", table1%b
-  write(*,"(a,a)") "table1.s = ", trim(ir_fstr(table1%s))
+  write(*,"(a,a)") "table1.s = ", trim(fstr(table1%s))
 
-  call eval_dd(L, table1%f1, x, v)
-  write(*,"(a,f3.1,a,f3.1,a,f3.1,a,f6.2)") &
-    "table1.f1(",x(1),",",x(2),",",x(3),") = ",v(1)
+  i = eval_vector(L, table1%f1, x, v)
+  write(*,"(i4,a,f3.1,a,f3.1,a,f3.1,a,f6.2)") &
+    i, " table1.f1(",x(1),",",x(2),",",x(3),") = ",v(1)
 
-  call eval_dd(L, table1%table2(1)%f2, x, v)
-  write(*,"(a,f3.1,a,f3.1,a,f3.1,a,f6.2)") &
-    "table1.table2[1].f2(",x(1),",",x(2),",",x(3),") = ",v(1)
+  i = eval_vector(L, table1%f4, x, v)
+  write(*,"(i4,a,f3.1,a,f3.1,a,f3.1,a,f6.2)") &
+    i, " table1.f4(",x(1),",",x(2),",",x(3),") = ",v(1)
 
-  call eval_dd(L, table1%table3%f3, x, v)
-  write(*,"(a,f3.1,a,f3.1,a,f3.1,a,f6.2)") &
-    "table1.table3.f3(",x(1),",",x(2),",",x(3),") = ",v(1)
+  i = eval_vector(L, table1%f5, x, v)
+  write(*,"(i4,a,f3.1,a,f3.1,a,f3.1,a,f6.2)") &
+    i, " table1.f5(",x(1),",",x(2),",",x(3),") = ",v(1)
 
   print *, ""
   n = size(table1%e)
@@ -245,11 +307,11 @@ program main
     write(*,"(a,i1,a,f6.2)") "table1.e(",i,") = ", table1%e(i)
   enddo
 
-  if (ir_read(L, cstr("table4")) .ne. 0) stop
-  print *, ""
-  print *,"READ TABLE4"
-  do i=1,3
-    write(*,"(a,i1,a,a)") "table4(",i,").name = ", trim(ir_fstr(table4(i)%name))
-  enddo
+  !ios = ir_unread(L, cstr('statistics'));
+  !ios = luaL_loadstring(L, cstr("print_table('statistics')"));
+  !ios = lua_pcall(L, 0,0,0);
+
+  name = fstr(ir_get_function_name(L,c_loc(table1%f5)))
+  print *, "f5:", name
 
 end

@@ -15,31 +15,18 @@ IREP - An I<Intermediate Representation> for Structured Input
 
   // C/C++
   #include "ir_extern.h"
-  #include "wkt_TABLE.h"
+  #include "wkt_TABLENAME.h"
 
   int ir_read(lua_State *L, const char *tbl_elem);
   int ir_exists(lua_State *L, const char *t);
   int ir_rtlen(lua_State *L, const char *s);
+  int ir_nprm(int npnr);
+  int ir_nret(int npnr);
+  int ir_unread(lua_State *L, const char *ir_tbl)
 
   ! Fortran
-  use ir_readnml
-  use wkt_TABLE
-
-  integer(c_int) function ir_read(L, t) bind(c, name="ir_read")
-    use iso_c_binding
-    type(c_ptr), value :: L
-    character(kind=c_char), dimension(*) :: t
-  end function
-  integer(c_int) function ir_exists(L, t) bind(c, name="ir_exists")
-    use iso_c_binding
-    type(c_ptr), value :: L
-    character(kind=c_char), dimension(*) :: t
-  end function
-  integer(c_int) function ir_rtlen(L, t) bind(c, name="ir_rtlen")
-    use iso_c_binding
-    type(c_ptr), value :: L
-    character(kind=c_char), dimension(*) :: t
-  end function
+  use ir_extern
+  use wkt_TABLENAME
 
 =head1 DESCRIPTION
 
@@ -53,7 +40,7 @@ and puts the table values into the data store.
 
 =head2 Usage
 
-The first step is to design and define one or more I<well-known tables>
+Step one is to design and define one or more I<well-known tables>
 for the data store (see below.)
 After creating the well-known tables,
 you can build the IREP library,
@@ -92,7 +79,7 @@ you can ask how long the actual input array was:
   int nelem = ir_rtlen(L, "mytable.subtable.v1");
     
 If a table element is a string,
-you can move it from the data store into a local copy using
+you can copy it from the data store into a local variable using
 a macro or function from IREP:
 
   // C
@@ -105,13 +92,39 @@ a macro or function from IREP:
 
   ! Fortran
   character(len=64) :: my_ss, my_vs
-  my_ss = trim(ir_fstr(t%ss))               ! Access scalar string.
-  my_vs = trim(ir_fstr(t%vs(:,1)))          ! First element of vector.
+  my_ss = trim(fstr(t%ss))                  ! Access scalar string.
+  my_vs = trim(fstr(t%vs(:,1)))             ! First element of vector.
+
+The remaining functions in the IREP API are briefly described:
+
+  int ir_nprm(int npnr); // Return NPRM, given an npnr value.
+  int ir_nret(int npnr); // Return NRET, given an npnr value.
+
+These two functions are typically used by the host code during
+evaluation of Lua callback functions.
+(See below, L</"Lua Callback Functions">.)
+
+  int ir_unread(lua_State *L, const char *ir_tbl)
+
+This function is experimental at present.
+It is effectively the reverse of I<ir_read>:
+IREP can read one of the tables in the data store,
+and create a corresponding table in the I<lua_State>.
+
+  char *ir_get_function_name(lua_State *L,void *p);
+
+This function is aimed mainly at error reporting,
+during callback function evaluation.
+When the Lua input file is read,
+IREP stores the full name of each callback function using
+the address of its associated C<lua_cb_data> structure as a key.
+The function name can thus be accessed later,
+typically to produce better error messages.
 
 =head2 Defining the Data Store
 
 The IREP data store is a collection of C/C++ C<structs>
-and their equivalent Fortran C<derived type>.
+or their equivalent Fortran C<derived type>.
 The code defining each variable in the data store is written once,
 using cpp(1) macros that expand into either C/C++ or Fortran
 source code,
@@ -119,177 +132,267 @@ depending on the context:
 
 =head3 Example Table in the IREP Data Store
 
-  IREP Input           C/C++ Output     Fortran Output
-  -----------------------------------------------------------------
-  Beg_struct(irt_t)    struct irt_t {   type, bind(c) :: irt_t
-    ir_int(a,1)          int a;           integer(c_int) :: a
-    Vir_dbl(b,2)         double b[2];     real(c_double) :: b(2)
-    ir_str(c,8,"foo")    char c[8];       character(c_char) :: c(8)
-    ir_log(d,true)       _Bool d;         logical(c_bool) :: d
-  End_struct(irt_t)    } irt_t;         end type irt_t
+  IREP Input          C/C++ Output    Fortran Output
+  ---------------------------------------------------------------------
+  Beg_struct(irt_t)   struct irt_t {  type, bind(c) :: irt_t
+    ir_int(a,1)         int a;          integer(c_int) :: a=1
+    Vir_dbl(b,2)        double b[2];    real(c_double) :: b(2)
+    ir_str(c,8,"foo")   char c[8];      character(c_char) :: c(8)="foo"
+    ir_log(d,true)      _Bool d;        logical(c_bool) :: d=.true.
+  End_struct(irt_t)   } irt_t;        end type irt_t
 
 The rules for constructing the IREP data store are precisely the
-standards for C and Fortran,
-as constrained by the Fortran C<ISO_C_BINDING>.
+rules for C and Fortran,
+constrained by the Fortran C<ISO_C_BINDING>.
 Structures can be nested in arbitrary fashion.
 Scalar and one-dimensional array variables (vectors) of type integer,
 double, boolean, or character (strings) can be defined.
+In addition, special types are available to define Lua I<callback>
+functions and Lua I<references>.
 
 =head3 Summary of IREP Macros
 
 =over
 
-=item Beg_struct(ID)
+=item C<Beg_struct(T)>
 
-Begin declaration for a table named I<ID>.
+Begin declaration for a table of type I<T>.
 
-=item End_struct(ID)
+=item C<End_struct(T)>
 
-End declaration for a table named I<ID>.
+End declaration for a table of type I<T>.
 
-=item ir_wkt(T,ID)
+=item C<ir_wkt(T,ID)>
 
-B<Define> a table named I<ID>, with typename I<T>.
+B<Define> a table named I<ID>, of type I<T>.
 
-=item Structure(T,ID)
+=item C<Vir_wkt(T,ID,FB,CB)>
 
-B<Declare> a table named I<ID>, with typename I<T>.
-
-=item Vstructure(T,ID,FB,CB)
-
-Declare a vector of tables I<ID>, typename I<T>.
+B<Define> a vector of tables named I<ID>, of type I<T>.
 The vector has Fortran bounds I<FB> and C bounds I<CB>.
 E.g., if FB=``0:5'', and CB=``6'', the vector will have
 six elements indexed from zero to five.
+Since Lua normally indexes from 1,
+the 0th element will presumably be unused.
+This is useful if you want a particular index value to
+have the same semantics in all three of C/C++, Fortran, and Lua.
+Alternatively, if you set FB=``1:6'',
+then the first element of the array would have index 0 in C/C++,
+but index 1 in Fortran and Lua.
 
-=item ir_dbl(ID,DV)
+=item C<Structure(T,ID)>
+
+B<Declare> a table named I<ID>, with typename I<T>.
+
+=item C<Vstructure(T,ID,FB,CB)>
+
+B<Declare> a vector of tables I<ID>, typename I<T>.
+The vector has Fortran bounds I<FB> and C bounds I<CB>.
+(See I<Vir_wkt> above.)
+
+=item C<ir_dbl(ID,DV)>
 
 Declare scalar variable of type double named I<ID>, default value I<DV>.
 
-=item ir_int(ID,DV)
+=item C<ir_int(ID,DV)>
 
 Declare scalar variable of type integer named I<ID>, default value I<DV>.
 
-=item ir_log(ID,DV)
+=item C<ir_log(ID,DV)>
 
 Declare scalar variable of type boolean named I<ID>, default value I<DV>.
 
-=item ir_str(ID,LEN,DV)
+=item C<ir_str(ID,LEN,DV)>
 
 Declare scalar string named I<ID>, max len I<LEN>, default value I<DV>.
 
-=item Vir_dbl(ID,NELEM,DV)
+=item C<Vir_dbl(ID,NELEM,DV)>
 
 Declare vector variable of type double named I<ID>,
 with I<NELEM> elements, default value I<DV>.
 
-=item Vir_int(ID,NELEM,DV)
+=item C<Vir_int(ID,NELEM,DV)>
 
 Declare vector variable of type integer named I<ID>,
 with I<NELEM> elements, default value I<DV>.
 
-=item Vir_log(ID,NELEM,DV)
+=item C<Vir_log(ID,NELEM,DV)>
 
 Declare vector variable of type boolean named I<ID>,
 with I<NELEM> elements, default value I<DV>.
 
-=item Vir_str(ID,LEN,NELEM)
+=item C<Vir_str(ID,LEN,NELEM)>
 
 Declare vector string named I<ID>, with I<NELEM> elements, max len I<LEN>.
 Note that string vectors cannot set a default value.
 
-=item Callback_dd(ID)
+=item C<Callback(ID,NPRM,NRET)>
 
-Declare callback function named I<ID>.
+Declare a Lua callback function named I<ID>,
+with I<NPRM> parameters,
+returning I<NRET> double precision values.
+
+=item C<ir_reference(ID)>
+
+Declare an IREP variable as a Lua I<reference>.
+In practice,
+Lua stores an (integer) reference to the matching element in the Lua table,
+for later use by the host code.
+This is effectively an escape mechanism to allow embedding
+of arbitrary Lua tables or functions into the well known table.
+
+=item C<ir_ptr(ID)>
+
+Declare an IREP variable as a C pointer.
+This will normally require some special treatment by the IREP reader.
+At the present time,
+the only use is internal,
+by the C<Callback> macro.
+
+=item C<Doc(( a comment ))>
+
+Add an inline comment.
+This macro must occur at the end of a line containing one of the
+other IR macros.
 
 =back
-
-=head3 Callback Functions
-
-Along with a declaration in the data store,
-callback functions are also entered into the callback table C<cbf_tbl>,
-in F<ir_special.h>.
-That table records three pieces of information for each function,
-or group of related functions:
-A I<pattern> matching the fully-qualified function name,
-the number of parameters C<nprm>,
-and the number of return values C<nret>.
-Parameters and return values are all assumed to be of type double
-in this implementation.
-For example:
-
-  { "^table1.table2[?*].f2$",      3, 1 },
-
-describes a callback function whose basic name is C<f2>,
-located inside a table named C<table2>,
-which is itself an array inside a top-level
-table named C<table1>.
-The pattern is a simple regular expression,
-anchored at the beginning and end with ``^'' and ``$'',
-respectively.
-It would match
-C<table1.table2[3].f2>,
-or
-C<table1.table2[57].f2>,
-but not 
-C<table1.table2.foo.f2>.
-(The construction ``?*'' means one or more of any single character.)
 
 =head2 Reading a Well Known Table
 
 The host code finds and loads (compiles) Lua input using
 the normal C<luaL_loadfile>, C<lua_pcall> sequence.
 If the Lua input contains a well-known table named,
-say, C<tab1>,
+say, C<table1>,
 that table can be read into the IREP data store using the call:
 
-  int n = ir_read(L, "tab1");
+  int n = ir_read(L, "table1");
 
 This recursively reads the entire table.
-If C<tab1> itself contains a subtable C<tab2>,
-that table could be individually read as:
+If C<table1> itself contains a subtable C<table2>,
+that table could be separately read as:
 
-  int n = ir_read(L, "tab1.tab2");
+  int n = ir_read(L, "table1.table2");
 
 That is, C<ir_read> can start at any point in a Lua table,
 and reads recursively from that element down.
 The syntax of the second argument is equivalent to the Lua
 syntax that would reference the same element.
-Reading just the subtable ignores elements in C<tab1>
-that are outside of C<tab2>.
+Reading just the subtable ignores elements in C<table1>
+that are outside of C<table2>.
 
-=head2 Special Handling
+=head2 Lua Callback Functions
 
-A well-known table in the Lua input is normally mirrored
-exactly by its counterpart in the IREP data store.
-A given,
-fully-qualified key name in the Lua table
-is matched component by component with the data store,
-and the ultimate I<value> for that key is matched against
-the type and size of the data store variable.
-If the match is perfect,
-(same type,
-and size of Lua element <= size of the IREP variable)
-the assignment succeeds.
-If not,
-we presume the Lua input is faulty,
-and record an error.
+Lua functions are stored in the IREP data store using a C<struct>:
 
-Special handling is a way to work around the ``perfect match''
-requirement.
-The implementation is similar to the way that callback functions
-are handled.
-There is a table in F<ir_special.h> named C<sh_tbl>,
-where we record a I<pattern> and a handler function for it.
-If the pattern is encountered,
-control is passed to the handler function for that pattern.
-One particular special handler is provided by the implementation:
-C<ir_ignore> will ignore a table element that matches the given
-pattern.
-This effectively gives the host code latitude to read most,
-but not all,
-of a table using C<ir_read>,
-and read (or ignore) the remainder using some other means.
+  Beg_struct(lua_cb_data)
+    ir_int(fref, -1) // -1 == LUA_REFNIL
+    ir_int(npnr, -9) // packed nprm,nret
+    ir_ptr(data)
+  End_struct(lua_cb_data)
+
+The C<fref> component stores a Lua I<reference> to the (Lua) function.
+The C<npnr> component packs the I<NPRM> and I<NRET> values
+into a single integer,
+to save space.
+The packing algorithm effectively will allow values for I<NPRM>
+in the range [0,1014] and for I<NRET>, the range [-9,2097142].
+(But note that the enforced lower bound for I<NRET> is currently
+-1, not -9.)
+
+The I<NPRM> parameter is checked by IREP to verify its range,
+then passed into the C<lua_cb_data> structure without additional
+processing.
+The I<NRET> parameter is more important, however.
+Its values have the following meaning:
+
+  nret == -1 // The Lua function will return a table of any length.
+  nret >=  0 // The Lua function will return exactly NRET values.
+
+This is important to IREP because,
+for convenience and efficiency,
+IREP allows an extended set of Lua types to be treated as
+I<functions>.
+Some examples may be useful.
+
+  Callback(f1,2,1)  // A function with NPRM==2, NRET=1.
+
+For I<f1>, either of the following Lua inputs is legal:
+
+  f1 = function(x,y) return math.sin(3) end
+  f1 = math.sin(3)
+
+The first input is a true Lua function,
+that happens to return a constant value.
+The second input is a I<number>,
+obviously constant,
+which IREP will also allow as the definition of I<f1>.
+In the second case,
+IREP uses the C<data> component of the C<lua_cb_data> structure
+associated with I<f1>.
+It allocates space for one double precision number,
+and stores I<math.sin(3)> at that location.
+It sets the C<fref> component to I<LUA_NOREF> as an
+indication that there is no true Lua function to call in this case.
+
+Later on,
+the host code may evaluate I<f1>.
+If C<fref==LUA_NOREF>,
+the evaluator can use the stored value.
+
+Here is a second example:
+
+  Callback(f2,3,3)  // A function with NPRM==3, NRET=3.
+ 
+For I<f2>, any of the following Lua inputs is legal:
+
+  f2 = function(x,y,z) return 3,4,5 end
+  f2 = { 3,4,5 }
+  f2 = 3
+
+The first input is a true Lua function,
+returning 3 values,
+which also happen to be constant in this example.
+The second input is Lua I<table>,
+containing the same values returned by the function.
+IREP treats the I<table> like it did the I<number> in
+the first example:
+It allocates space for the 3 values,
+and stores them in the C<data> component for
+later use by the host code.
+The third input is also legal.
+The scalar I<number> will be
+treated as if the input was
+
+  f2 = { 3,3,3 }.
+
+That is, I<broadcast> to fill the 3 return slots expected for this function.
+
+Finally, the case where C<NRET == -1>:
+
+  Callback(f3,3,-1) // A function with NPRM==3, NRET=-1.
+
+In this case,
+IREP expects the function to return a table
+(a rank-1 array of double precision numbers) of arbitrary length.
+A true Lua function can of course calculate a new table
+each time it is called:
+
+  f3 = function(x,y,z) return { x, x+y, x+y+z } end
+
+Note that in this case,
+the function returns a I<table>,
+distinct from the list returned by the function in example two above.
+Or the input can be a (constant) Lua table:
+
+  f3 = { 1,2,3,4,5 }
+
+If it is a table,
+IREP allocates space
+and stores the table values in the C<data> component,
+as before.
+In this case,
+it also modifies the C<npnr> component to reflect the
+actual number of elements read from the Lua table.
 
 =head1 RETURN VALUE
 
@@ -308,7 +411,7 @@ it is the same as the ``#'' operator in Lua.
 
 =head1 BUGS
 
-All variables in the IREP data store are static.
+Variables in the IREP data store are generally static.
 This is a consequence of current ISO_C_BINDING rules
 for sharing data between Fortran and C.
 This means that the maximum length of arrays (and therefore strings)
@@ -327,17 +430,8 @@ See the file named "Copyright" for the full text of the copyright notice.
 
 =head1 SEE ALSO
 
-See the example code which accompanies this release,
-located at F<etc/ex1> (C) and F<etc/ex2> (Fortran).
-This code illustrates how to construct a I<well-known table>,
-how to build and link the IREP library,
-how to write Lua input matching the WKT,
-and how to access the compiled data store from the host code.
-
-See F<irep-guide>,
+See F<irep-intro>,
 in this directory,
 for more discussion of some of the code in IREP.
-In particular,
-special handling is covered in greater depth.
 
 =cut
