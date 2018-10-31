@@ -1,9 +1,9 @@
 # QUICK START
 
-[//]: # Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
-[//]: # at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
-[//]: # busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
-[//]: # See ./Copyright for additional notices.
+    Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
+    at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
+    busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
+    See ./Copyright for additional notices.
 
 A quick way to see what is happening is to run the C pre-processor by hand:
 
