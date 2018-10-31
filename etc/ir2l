@@ -1,0 +1,97 @@
+#!/bin/ksh
+# Convert from IR to Lua, preserving inline comments.
+# Usage: ir2l wkt_*.h
+
+function lua1 {
+  lua -e kk=\"$1\" -e '
+  local s = io.read("*all")
+  assert(loadstring(s))()
+  local seen = {}
+  tdump = function (tname,t, lrep)
+    print("BEGIN_TABLE %%%",tname)
+    local klist = {}
+    for k,v in pairs(t) do table.insert(klist,k) end
+    table.sort(klist)
+    for i,k in pairs(klist) do
+      local v = t[k]
+      local nlrep
+      if type(k) == "string" then nlrep = lrep .. "." .. k
+      else                        nlrep = lrep .. "[" .. k .. "]"
+      end
+      if type(v) == "table" then
+        if not seen[v] then -- do not recurse on self-reference.
+          seen[v] = t
+          tdump(k, v, nlrep)
+        end
+      else
+        print(k,"%%%",v)
+        -- print(k,"%%%",v, "LREP:", nlrep) -- Future, for href?
+      end
+    end
+    print("END_TABLE %%%", tname)
+  end
+  tdump(kk, _G[kk], kk)'
+}
+
+function awk1 {
+  awk '{
+    if (/^#/) next
+    if (/^ *$/) next
+    if      ($2 == "=" || $1 == "}") { print $0 }
+    else if ($1 == "VDEFINE") { printf("%s={[1]=%s}\n", $2, $3) }
+    else if ($2 == "@@@") {
+      key = $1
+      n = split($0, a, / *@@@ */)
+      gsub(/\042/,"\047",a[2]) # single quote instead of double quote.
+      printf("%s = \"%s\",\n",key,a[2])
+    }
+    else print "ERROR", $0
+  }'
+}
+
+function awk2 {
+  awk 'BEGIN {
+    lev = 0
+    sp = "                                                                  "
+  }
+  {
+    if ($1 == "BEGIN_TABLE") {
+      if (match($3,/^[0-9]+$/))
+        printf("%s[%d] = {\n", substr(sp,1,lev*2),$3)
+      else
+        printf("%s%s = {\n", substr(sp,1,lev*2),$3)
+      lev++
+    } else if ($1 == "END_TABLE") {
+      lev--
+      if ($3 != tmain) printf("%s},\n",substr(sp,1,lev*2))
+      else             printf("%s}\n", substr(sp,1,lev*2))
+    } else if (match($0,/%%%/)) {
+      split($0, a, / *%%% */)
+      vv = trim(a[3])
+      if (vv == "function") vv = "function() end"
+      printf("%s%s = %s, -- %s\n",
+        substr(sp,1,lev*2),trim(a[1]),vv,trim(a[6]))
+    } else print "ERROR:", $0
+  }
+  function trim(t) {
+    sub(/^[ \t]*/,"",t)
+    sub(/[ \t]*$/,"",t)
+    return(t)
+  }' tmain=$1
+}
+
+function cpath {
+  case "$1" in
+  /*) print -- $1;;
+  ./*) print -- ${PWD}/${1#./};;
+  ../../*) print -- ${PWD%/*/*}/${1#../../};;
+  ../*) print -- ${PWD%/*}/${1#../};;
+  *) print -- ${PWD}/$1;;
+  esac
+}
+
+pwd > /dev/null # Set PWD.
+IPATH=$(cpath $0)
+Idir=${IPATH%/etc/*}
+tname=${1##*wkt_}; tname=${tname%.h}
+cc -E -I$Idir -DIREP_LANG_LUA $1 | awk1 | lua1 ${2:-$tname} | awk2 ${2:-$tname}
