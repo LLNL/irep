@@ -3,7 +3,7 @@
 // busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
 // See ./Copyright for additional notices.
 
-// Undefine all the IR macros except IR_STR, IR_LEN.
+// Undefine the IR macros.
 #undef BOOLEAN
 #undef Beg_struct
 #undef End_struct
