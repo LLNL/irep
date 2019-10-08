@@ -251,12 +251,11 @@ program main
   use ir_extern
   use wkt_table1
   use wkt_table4
-  use wkt_statistics
   use mainmod
   implicit none
 
   integer :: ios, i, n, ng
-  real(c_double) :: v(3), x(3) = [ 2.0, 3.0, 4.0 ], start
+  real(c_double) :: v(3), x(3) = [ 2.0, 3.0, 4.0 ]
   type(c_ptr) :: L
   character(len=64) :: arg, name
 
@@ -268,7 +267,6 @@ program main
     stop 0
   endif
   call get_command_argument(1, arg)
-  start = ir_clock()
   if (luaL_loadfile(L, cstr(arg)) .ne. 0) then
     print *, "cannot load file: ", fstr(lua_tostring(L,-1))
     stop 1
@@ -277,7 +275,6 @@ program main
     print *, "cannot run file: ", fstr(lua_tostring(L,-1))
     stop 1
   endif
-  call ir_add_time(1, ir_clock() - start, c_loc(statistics%item1))
 
   if (ir_read(L, cstr("table1")) .ne. 0) stop
 
@@ -306,10 +303,6 @@ program main
   do i=1,n
     write(*,"(a,i1,a,f6.2)") "table1.e(",i,") = ", table1%e(i)
   enddo
-
-  !ios = ir_unread(L, cstr('statistics'));
-  !ios = luaL_loadstring(L, cstr("print_table('statistics')"));
-  !ios = lua_pcall(L, 0,0,0);
 
   name = fstr(ir_get_function_name(L,c_loc(table1%f5)))
   print *, "f5:", name

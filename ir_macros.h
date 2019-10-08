@@ -50,7 +50,6 @@
 // Structure: Declare a variable ID of type T.
 #define Structure(T,ID) type(T) :: ID
 #define Callback(ID,NP,NR) Structure(lua_cb_data, ID)
-#define Timeitem(ID) Structure(ir_time_item, ID)
 
 // Vstructure: Declare a vector of structures.
 // FB: Fortran bounds; CB: C bounds
@@ -93,7 +92,6 @@
 #define Structure(T,ID) T ID;
 #define Callback(ID,NP,NR) Structure(lua_cb_data, ID)
 #define Vstructure(T,ID,FB,CB) T ID[CB];
-#define Timeitem(ID) Structure(ir_time_item, ID)
 
 // ==================================================================
 // ===========================  LUA SECTION  ========================
@@ -124,7 +122,6 @@
 #define Structure(T,ID) ID = T, --
 #define Callback(ID,NP,NR)    ID @@@ lf %%% function %%% NP   %%% NR
 #define Vstructure(T,ID,FB,CB) ID = { [1] = T }, --
-#define Timeitem(ID) Structure(ir_time_item, ID)
 
 // ==================================================================
 // ===========================  GENERATOR SECTION  ==================
@@ -155,7 +152,6 @@
 
 #define Structure(T,ID) T_tbl ID T 0:0
 #define Vstructure(T,ID,FB,CB) T_tbl ID T FB
-#define Timeitem(ID) Structure(ir_time_item, ID)
 
 // ==================================================================
 // ===========================  ERROR ===============================

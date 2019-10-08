@@ -31,12 +31,20 @@ extern "C" {
 #define O(a,b) offsetof(a,b)
 #define S(a) sizeof(a)
 
-// Turn on IR_DEBUG to see a record of elements visited during ir_read.
-#ifdef IR_DEBUG
-#define Dbg_print(fmt,...) (void)fprintf(stderr,"IR_DBG: " fmt "\n",__VA_ARGS__)
-#else
-#define Dbg_print(fmt,...)
-#endif
+// Set irep_debug=1 in the environment, to see elements visited during ir_read.
+static int irep_debug = -1;
+static void Dbg_print(const char *fmt, ...)
+{
+  va_list argp;
+  if (irep_debug > 0) {
+    char buf[BSZ];
+    const int i = sprintf(buf, "IR_DBG: ");
+    va_start(argp, fmt);
+    (void)vsnprintf(buf+i,sizeof(buf)-10,fmt,argp);
+    va_end(argp);
+    (void)fprintf(stderr,"%s\n",buf);
+  }
+}
 
 // Note comma operator below, specifying the return value.
 #define Ir_error(fmt,...) \
@@ -137,9 +145,10 @@ static int iir_print(char *lrep,char *lp,void *bp,ir_element *ep, int treat_as_s
 
 // Handle variables of "type" ir_reference.  These variables become
 // Lua references, to be handled later by the compiled code as needed.
-static int read_ref(lua_State *L,void *bp) {
+static int read_ref(lua_State *L,char *lrep,void *bp) {
   *((int *)bp) = luaL_ref(L, LUA_REGISTRYINDEX);
   lua_pushnil(L);
+  Dbg_print("%s = %d", lrep, *((int *)bp));
   return 0;
 }
 
@@ -179,13 +188,14 @@ static int read_cbk(lua_State *L,char *lrep,void *bp,ir_element *ep) {
     lua_pushnil(L);
 
   } else {
-    // Unpack nprm, nret.  Ir_generate enforces nprm>=0, nret>=-1.
+    // Unpack nprm, nret.  Ir_generate enforces nprm>=-1, nret>=-1.
     // The packing algorithm will allow a lower limit of -9.
     int nprm = ir_nprm(npnr);
     int nret = ir_nret(npnr);
 
-    if (nret == 0) return Ir_error("``%s'': Function has zero return values."
-      "  Constant returns are not allowed.", lrep);
+    if (nret == 0)
+      return Ir_error("``%s'': Function declares zero return values."
+      "  Returning a Lua scalar or constant array is not allowed.", lrep);
 
     ii = (tv==LUA_TTABLE) ? lua_objlen(L,-1) : (nret>0) ? nret : 1;
     if (nret != -1 && ii != nret)
@@ -243,7 +253,7 @@ static int iir_read(lua_State *L,char *lrep,char *lp,void *bp,ir_element *ep) {
 
   // Callback functions and references are handled separately.
   if (ep->typ == T_cbk) return read_cbk(L, lrep, bp, ep);
-  if (ep->typ == T_ref) return read_ref(L, bp);
+  if (ep->typ == T_ref) return read_ref(L, lrep, bp);
 
   if (tv != LUA_TTABLE) { // if top of stack is a scalar value, read it now.
     if (tv == LUA_TSTRING) {
@@ -418,6 +428,8 @@ int ir_read(lua_State *L, const char *table_name) {
   if (ir_elem(L,table_name))
     return Ir_error("Bad Lua table: %s: %s", table_name, lua_tostring(L,-1));
 
+  irep_debug = getenv("irep_debug") ? atoi(getenv("irep_debug")) : 0;
+
   // Find the well known table name first.
   char *s, tcopy[BSZ], lrep[BSZ];
   (void)strcpy(tcopy, table_name);
@@ -488,17 +500,25 @@ int ir_rtlen(lua_State *L, const char *s) {
   return (n==LUA_TNIL) ? -1 : ((n==LUA_TNUMBER) ? 0 : (int)lua_objlen(L,-1));
 }
 
-// Return current cputime (seconds) used by this process.
-double ir_clock(void) {
-  struct timespec ts;
-  (void) clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
-  return (double)(ts.tv_sec + ts.tv_nsec/1000000000.0);
-}
-
-// Add count, delta to the given ir_time_item.
-void ir_add_time(int count, double delta, ir_time_item *tp) {
-  tp->count += count;
-  tp->time += delta;
+// Read an (arbitrarily large) string, stored earlier as an ir_reference.
+// The third argument can be NULL if you're not interested in the length.
+// The returned string must be copied into the caller's scope, and you
+// should call lua_pop(L,-1) after that is done, to allow Lua to garbage
+// collect the item.  Typical calling sequence:
+//   if (ir_exists(L, "physics.foo")) {
+//     int nn;
+//     std::string foo = ir_get_stringref(L,irep::physics.foo,&nn);
+//     lua_pop(L,-1);
+//   }
+const char *ir_get_stringref(lua_State *L, int n, int *len) {
+  if (n != LUA_REFNIL) {
+    lua_rawgeti(L, LUA_REGISTRYINDEX, n);
+    int ii = lua_type(L,-1);
+    if (ii == LUA_TSTRING) return lua_tolstring(L,-1,(size_t *)len);
+    else (void)Ir_error("IR_GET_STRINGREF: Bad value(%s): "
+      "ir_reference variable should be a string",lua_typename(L,ii));
+  }
+  return 0;
 }
 
 #if defined(__cplusplus)

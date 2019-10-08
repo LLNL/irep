@@ -104,8 +104,8 @@ for line in string.gmatch(p:read("*all"),'[^\n]+') do
     local nprm,nret = f3:match("([+-]?%d+):([+-]?%d+)")
     nprm,nret = tonumber(nprm),tonumber(nret)
     -- Strictly speaking, the lower limit for nprm,nret is -9.  However,
-    -- nprm<0 or nret<-1 is semantically incorrect at this time.
-    if nprm <  0 or nprm >    1014 then error("Bad nprm: " .. nprm) end
+    -- nprm<-1 or nret<-1 is semantically incorrect at this time.
+    if nprm < -1 or nprm >    1014 then error("Bad nprm: " .. nprm) end
     if nret < -1 or nret > 2097142 then error("Bad nret: " .. nret) end
     local len = nprm+9 + (nret+9)*1024
     tbl_list[tcnt][f2] = { typ=f1,len=len,flb=1,fub=tonumber(f4) }
@@ -139,8 +139,11 @@ local f1 = function(ti, tname, t)
   print("static ir_element " .. tname .. "[] = { // " .. typename[ti])
   for k,v in pairs(t) do
     local idesc = rev_ta[v.tname] or -1
-    local szo = stbl[v.tname] or stbl[tmap[v.typ]]
-    print(string.format("  { Q(%s),%3d, S(%s), O(%s,%s), %8d,%3d,%3d, %s },",
+    local szo = string.format("S(%s)", stbl[v.tname] or stbl[tmap[v.typ]])
+    if v.typ == "T_str" and v.fub > 0 then -- An array of strings.
+      szo = string.format("%8d", v.len) -- Stride == Fortran "len" of item.
+    end
+    print(string.format("  { Q(%s),%3d, %s, O(%s,%s), %8d,%3d,%3d, %s },",
     stbl[k],idesc,szo,stbl[typename[ti]],stbl[k],v.len,v.flb,v.fub,v.typ))
   end
   print("  { 0 }\n};\n")

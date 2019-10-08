@@ -25,12 +25,6 @@ Beg_struct(lua_cb_data)
   ir_ptr(data)
 End_struct(lua_cb_data)
 
-// A time entry for the wkt_statistics table.
-Beg_struct(ir_time_item)
-  ir_int(count, 0)
-  ir_dbl(time, 0.0)
-End_struct(ir_time_item)
-
 #if defined(__cplusplus)
 }
 #endif

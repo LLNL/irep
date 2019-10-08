@@ -13,7 +13,7 @@ module ir_extern
   implicit none
   private
   public :: ir_read, ir_exists, ir_rtlen, ir_nprm, ir_nret, ir_unread
-  public :: ir_clock, ir_add_time, ir_get_function_name
+  public :: ir_get_function_name
   public :: lua_cb_data
 
 interface ! Let Fortran call C functions ir_read, ir_exists, ir_rtlen.
@@ -32,6 +32,13 @@ interface ! Let Fortran call C functions ir_read, ir_exists, ir_rtlen.
     type(c_ptr), value :: L
     character(kind=c_char), dimension(*) :: t
   end function
+  function ir_get_stringref(L, n, len) bind(c, name="ir_get_stringref")
+    use, intrinsic :: iso_c_binding, only : c_ptr, c_int
+    type(c_ptr), value :: L
+    integer(kind=c_int), value :: n
+    type(c_ptr), value :: len
+    type(c_ptr) :: ir_get_stringref
+  end function
   integer(c_int) function ir_rtlen(L, t) bind(c, name="ir_rtlen")
     use iso_c_binding
     type(c_ptr), value :: L
@@ -45,16 +52,6 @@ interface ! Let Fortran call C functions ir_read, ir_exists, ir_rtlen.
     use iso_c_binding
     integer(c_int), value :: npnr
   end function
-  function ir_clock() bind(c, name="ir_clock")
-    use iso_c_binding
-    real(c_double) :: ir_clock
-  end function
-  subroutine ir_add_time(cnt,delta,tp) bind(c, name="ir_add_time")
-    use iso_c_binding
-    integer(c_int), value :: cnt
-    real(c_double), value :: delta
-    type(c_ptr), value :: tp
-  end subroutine
   function ir_get_function_name(L, p) bind(c, name="ir_get_function_name")
     use iso_c_binding
     type(c_ptr), value :: L
@@ -79,9 +76,8 @@ extern int ir_exists(lua_State *L, const char *t);
 extern int ir_rtlen(lua_State *L, const char *s);
 extern int ir_nprm(int npnr);
 extern int ir_nret(int npnr);
-extern double ir_clock(void);
-extern void ir_add_time(int count, double delta, ir_time_item *tp);
 extern char *ir_get_function_name(lua_State *L,void *p);
+extern char *ir_get_stringref(lua_State *L,int n, int *len);
 
 #if defined(__cplusplus)
 }

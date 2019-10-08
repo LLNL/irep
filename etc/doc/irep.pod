@@ -23,6 +23,7 @@ IREP - An I<Intermediate Representation> for Structured Input
   int ir_nprm(int npnr);
   int ir_nret(int npnr);
   int ir_unread(lua_State *L, const char *ir_tbl)
+  char *ir_get_stringref(lua_State *L, int n, int *len);
 
   ! Fortran
   use ir_extern
@@ -120,6 +121,23 @@ IREP stores the full name of each callback function using
 the address of its associated C<lua_cb_data> structure as a key.
 The function name can thus be accessed later,
 typically to produce better error messages.
+
+  char *ir_get_stringref(lua_State *L, int n, int *len);
+
+This function handles the case where a Lua string of
+arbitrary length has been
+stored using the IREP I<ir_reference> macro.
+(See L</"ir_get_stringref">.)
+The client code typically calls I<ir_get_stringref> as follows:
+
+  if (ir_exists(L, "physics.foo")) {
+    int nn;
+    std::string foo = ir_get_stringref(L,irep::physics.foo,&nn);
+    lua_pop(L,-1);
+  }
+
+The I<nn> parameter returns the length of the string;
+it can be passed as C<(char *)NULL> if you do not need this value.
 
 =head2 Defining the Data Store
 
@@ -239,7 +257,9 @@ In practice,
 Lua stores an (integer) reference to the matching element in the Lua table,
 for later use by the host code.
 This is effectively an escape mechanism to allow embedding
-of arbitrary Lua tables or functions into the well known table.
+of arbitrary Lua tables, functions, or strings into the well known table.
+The host code will need to be specialized to handle each C<ir_reference>
+value.  See also L</"ir_get_stringref">.
 
 =item C<ir_ptr(ID)>
 
@@ -280,6 +300,10 @@ syntax that would reference the same element.
 Reading just the subtable ignores elements in C<table1>
 that are outside of C<table2>.
 
+If the environment variable C<irep_debug> is set to a positive integer value,
+C<ir_read> will produce a listing to I<stderr> of each variable
+read from the Lua table.
+
 =head2 Lua Callback Functions
 
 Lua functions are stored in the IREP data store using a C<struct>:
@@ -295,15 +319,16 @@ The C<npnr> component packs the I<NPRM> and I<NRET> values
 into a single integer,
 to save space.
 The packing algorithm effectively will allow values for I<NPRM>
-in the range [0,1014] and for I<NRET>, the range [-9,2097142].
-(But note that the enforced lower bound for I<NRET> is currently
+in the range [-9,1014] and for I<NRET>, the range [-9,2097142].
+(But note that the enforced lower bound for I<NPRM> and I<NRET> is currently
 -1, not -9.)
 
-The I<NPRM> parameter is checked by IREP to verify its range,
-then passed into the C<lua_cb_data> structure without additional
-processing.
-The I<NRET> parameter is more important, however.
-Its values have the following meaning:
+Values for the I<NPRM> parameter have the following meaning:
+
+  nprm == -1 // The Lua function accepts a variable number of arguments.
+  nprm >=  0 // The Lua function accepts exactly NPRM arguments.
+
+Values for the I<NRET> parameter have the following meaning:
 
   nret == -1 // The Lua function will return a table of any length.
   nret >=  0 // The Lua function will return exactly NRET values.
