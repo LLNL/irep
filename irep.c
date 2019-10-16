@@ -515,7 +515,7 @@ const char *ir_get_stringref(lua_State *L, int n, int *len) {
     lua_rawgeti(L, LUA_REGISTRYINDEX, n);
     int ii = lua_type(L,-1);
     if (ii == LUA_TSTRING) return lua_tolstring(L,-1,(size_t *)len);
-    else (void)Ir_error("IR_GET_STRINGREF: Bad value(%s): "
+    (void)fprintf(stderr,"ERROR (Lua/IR): IR_GET_STRINGREF: Bad value(%s): "
       "ir_reference variable should be a string",lua_typename(L,ii));
   }
   return 0;
