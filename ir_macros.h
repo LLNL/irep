@@ -34,7 +34,7 @@
 #define ir_int(ID,DV) integer(c_int) :: ID = DV
 #define ir_log(ID,DV) logical(c_bool) :: ID = .DV.
 #define ir_str(ID,LEN,DV) character(c_char) :: ID(LEN) = \
-   transfer([character(kind=c_char,len=LEN)::DV +/+/ '\0'],[c_char_'a'])
+   transfer([character(kind=c_char,len=LEN)::DV +/+/ c_null_char],[c_char_'a'])
 #define ir_reference(ID) integer(c_int) :: ID = -1
 #define ir_ptr(ID) type(c_ptr) :: ID
 
