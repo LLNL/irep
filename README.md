@@ -1,9 +1,11 @@
-# QUICK START
+# IREP
 
-    Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
-    at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
-    busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
-    See ./Copyright for additional notices.
+IREP is a tool that enables mixed-language simulation codes to use a
+common, Lua-based format for their input decks. It generates an
+*intermediate representation* for the input data, which can then be read
+conveniently from multiple languages (C, C++, Fortran, and Lua).
+
+## QUICK START
 
 A quick way to see what is happening is to run the C pre-processor by hand:
 
@@ -155,3 +157,21 @@ any number or function was read:
 
     fref == LUA_REFNIL ==> No entry of any kind was available;
     fref != LUA_REFNIL ==> Some entry (number or function) was read.
+
+## AUTHORS
+
+IREP was created by Lee Busby, busby1@llnl.gov.
+
+## LICENSE
+
+IREP is distributed under the terms of the MIT license. Copyrights in the
+IREP project are retained by contributors. No copyright assignment is
+required to contribute to IREP. All new contributions must be made under
+the MIT license.
+
+See [LICENSE](https://github.com/LLNL/irep/blob/master/LICENSE) and
+[NOTICE](https://github.com/LLNL/irep/blob/master/NOTICE) for details.
+
+SPDX-License-Identifier: MIT
+
+LLNL-CODE-702338
