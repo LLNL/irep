@@ -1,0 +1,453 @@
+#!/usr/bin/env lua
+
+-- Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
+-- at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
+-- busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
+-- See ./Copyright for additional notices.
+
+-- Print usage description and exit with exitcode (or 1 if not provided)
+local function usage(exitcode)
+   print("irep-generate [-h] [--mode PART] HEADERS")
+   print()
+   print("This script generates source code for IREP well-known-table (WKT)")
+   print("libraries.")
+   print()
+   print("Generated code is printed to standard out.")
+   print()
+   print("Positional Arguments:")
+   print("  HEADERS          wkt_*.h files from which to generate code, e.g.:")
+   print("                     wkt_geometry.h wkt_physics.h ...")
+   print("Generation options (by default, generate tables + index)")
+   print("  --mode tables    generate only tables")
+   print("  --mode index     generate only index")
+   print("  --mode fortran   generate fortran module from a single wkt header")
+   print()
+   print("  --module-name    name for generated module (fortran mode only,")
+   print("                   inferred from header name by default)")
+   print()
+   print("Environment variables:")
+   print("  CPP              C preprocessor to use (default gcc -E)")
+   print("  CPPFLAGS         flags for the C preprocessor")
+   print()
+   print("Help:")
+   print("  -h               display this message")
+
+   os.exit(exitcode or 1)
+end
+
+
+-- IREP type definitions
+local tmap = {
+  T_int = "int",
+  T_dbl = "double",
+  T_log = "_Bool",
+  T_str = "char",
+  T_ref = "int",
+  T_ptr = "void*",
+  T_cbk = "lua_cb_data",
+}
+
+-- Which parts of the IREP should be in the output:
+--  'tables':  generate the header-specific table data structures
+--  'index':   generate the global lookup table for *all* wkt's
+--  'fortran': generate a fortran .o and .mod file from one header
+-- By default, both are generated, but for modular codes they can be split so
+-- that the global lookup tables are mode generated once.
+local mode_values = {
+   ["tables"] = true,
+   ["index"] = true,
+   ["fortran"] = true,
+}
+
+-- generate tables and index by default
+local mode = { ["tables"] = true, ["index"] = true }
+
+-- names of WKT headers for which we should generate code
+local wkt_headers = {}
+
+-- fortran module name (for fortran mode)
+local fortran_module_name
+
+-- CPP and CPPFLAGS come from the environment
+local cpp = os.getenv("CPP") or "gcc -E"
+local cppflags = os.getenv("CPPFLAGS") or ""
+
+
+-- sort keys of a table and return them as an integer-indexed table
+local function sorted_keys(tab)
+   keys = {}
+   for k, _ in pairs(tab) do
+      table.insert(keys, k)
+   end
+   table.sort(keys)
+   return keys
+end
+
+
+-- Parse arguments from the command line, per the description in usage()
+local function parse_args()
+   -- no args just prints usage
+   if #arg == 0 then
+      usage()
+   end
+
+   -- parse any command line options
+   local i = 1
+   while i <= #arg and arg[i]:match("^-") do
+      if arg[i] == "-h" then
+         usage(0)
+      elseif arg[i] == "--mode" then
+         i = i + 1
+         if not mode_values[arg[i]] then
+            print("bad option for --mode: '" .. arg[i] .. "'")
+            values = table.concat(sorted_keys(mode_values), "', '")
+            print(string.format("valid values are: '%s'", values))
+            os.exit(1)
+         end
+         mode = { [arg[i]] = true }
+      elseif arg[i] == "--module-name" then
+         i = i + 1
+         fortran_module_name = arg[i]
+      else
+         print("invalid option: '" .. arg[i] .. "'")
+         os.exit(1)
+      end
+      i = i + 1
+   end
+
+   -- user must provide some headers or we'll just error out here
+   if i > #arg then
+      print("error: no headers provided")
+      os.exit(1)
+   end
+
+   -- accumulate header names in wkt_headers
+   while i <= #arg do
+      header = arg[i]
+
+      -- header needs to end in .h, as C preprocessors are picky
+      if not header:match("\.h$") then
+         print("error: bad header name: '" .. header .. "'")
+         print("must end with '.h'")
+         os.exit(1)
+      end
+      table.insert(wkt_headers, header)
+      i = i + 1
+   end
+
+   -- sort list of headers after accumulating them all
+   table.sort(wkt_headers)
+end
+
+
+-- Takes one wkt_*.h and generates the corresponding fortran code
+local function generate_fortran()
+   if #wkt_headers ~= 1 then
+      print("error: `irep-generate --mode fortran` takes exactly one header")
+      os.exit(1)
+   end
+
+   -- infer module name from header if it's not provided
+   local header = wkt_headers[1]
+   if not fortran_module_name then
+      fortran_module_name =  header:gsub(".h$", "")
+   end
+
+   -- arguments for the preprocessor
+   cpp_args = {
+      cpp,
+      "-DIR_WKT_NAME=" .. fortran_module_name,
+      "-DIREP_LANG_FORTRAN",
+      cppflags,
+      header,
+   }
+   cpp_cmd = table.concat(cpp_args, " ")
+   local p = assert(io.popen(cpp_cmd, "r"))
+
+   -- read through lines of input and filter out preprocessor artifacts
+   for line in p:lines() do
+      line = line:gsub("%s+%+/%+/", " //")
+      line = line:gsub(' *## *', '')
+      if not (line:match('^#') or line:match("^%s*$")) then
+         print(line)
+      end
+   end
+   p:close()
+   os.exit(0)
+end
+
+
+local function generate_preamble()
+   local c = mode.fortran and "!" or "//"
+   print(c .. " This file was generated by irep-generate. Do not modify.")
+   print(c .. " For more on IREP, see https://github.com/LLNL/irep.")
+   print(c .. "")
+   print(c .. " Mode:")
+   print(c .. "   tables:   " .. tostring(mode.tables))
+   print(c .. "   index:    " .. tostring(mode.index))
+   print(c .. "   fortran:  " .. tostring(mode.fortran))
+   print(c .. "")
+   print(c .. " Environment:")
+   print(c .. "   CPP:      '" .. cpp .. "'")
+   print(c .. "   CPPFLAGS: '" .. cppflags .. "'")
+   print(c .. "")
+   print(c .. "")
+end
+
+
+-- generate includes for input headers at top of output
+local function generate_includes(ostream)
+   for _, header in ipairs(wkt_headers) do
+      ostream:write(string.format("#include \"%s\"\n", header))
+   end
+   ostream:write("\n")
+end
+
+
+-- print out pairs in the sorted order of their values
+local function pairsbyvalues(t,f)
+  local rev, a = {}, {}
+  for k,v in pairs(t) do rev[v] = k; a[#a + 1] = v end
+  table.sort(a,f)
+  local i = 0
+  return function()
+    i=i+1
+    return a[i],rev[a[i]]
+  end
+end
+
+-- Stbl is an associative string table: stbl.num_comp = "s0123", etc.
+-- It's not really necessary, but makes the output look neater.  String
+-- numbers count up from 0.
+local scnt, stbl = -1, {}
+
+
+-- convenience function for adding to the string table
+local function add2stbl(s)
+  if not stbl[s] then
+    scnt = scnt + 1
+    stbl[s] = string.format("s%04d",scnt)
+  end
+end
+
+
+-- These variables hold table state while we parse the input.
+-- tbl_list is a 0-based array.  Each element corresponds to one of the
+-- structs in a wkt_*.h file (See the IREP "Beg_struct" macro.)  Each element
+-- is itself a table, containing most or all the fields (depending on the
+-- element type) of the "ir_element" struct in irep.c.
+local tcnt, tbl_list = -1, {}
+
+-- wkt_list is similar to tbl_list.  It records similar information for
+-- each well-known-table.  Each entry in wkt_list effectively contains an
+-- ir_element, plus the base address of the well-known-table instance.
+local wcnt, wkt_list = -1, {}
+
+-- rev_ta is an associative table of type names, such as "irt_method",
+-- with that name's index in tbl_list.
+local rev_ta = {}
+
+-- Typename is an array parallel to tbl_list, that lists the structure
+-- name for each index.
+local typename = {}
+
+
+-- run the C preprocessor over all input WKT heders and collect the
+-- things to be generated in the various tables above
+local function process_headers()
+   -- create a temporary file with WKT #includes
+   -- compilers are picky about names, so we append .h to this name
+   tmpfile_name = os.tmpname() .. ".h"
+   tmpfile = io.open(tmpfile_name, "w")
+   generate_includes(tmpfile)
+   tmpfile:close()
+
+   -- run the preprocessor on the WKT includes and read its output
+   cpp_cmd = table.concat({
+         cpp, cppflags, "-DIREP_GENERATE", tmpfile_name}, " ")
+   local p = assert(io.popen(cpp_cmd, "r"))
+
+   local ct -- type name of the struct being declared, e.g., "irt_sources"
+
+   -- loop invokes this function for each line of input
+   local function handle_line(line)
+      local f1,f2,f3,f4 = line:match("%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
+      if not f1 then error("Bad input: " .. line) end
+
+      add2stbl(f2)
+      if f1=="bst" then -- Begin structure declaration.
+         if ct then error("ct should be nil at " .. f2) end
+         assert(not rev_ta[f2], "Repeated table: " .. f2)
+         ct = f2
+         tcnt = tcnt + 1
+         tbl_list[tcnt] = {}
+         typename[tcnt] = f2
+         rev_ta[f2] = tcnt
+
+      elseif f1=="est" then -- End structure declaration.
+         assert(ct == f2, "Expected equality: " .. ct .."==" .. f2)
+         ct = nil
+
+      elseif f1:match("T_[dilprs]") then -- Leaf declaration (POD or pointer).
+         tbl_list[tcnt][f2] = {
+            typ = f1,
+            len = tonumber(f3),
+            flb = 1,
+            fub = tonumber(f4),
+         }
+
+      elseif f1=="T_cbk" then -- Leaf declaration (callback function.)
+         local nprm,nret = f3:match("([+-]?%d+):([+-]?%d+)")
+         nprm,nret = tonumber(nprm),tonumber(nret)
+         -- Strictly speaking, the lower limit for nprm,nret is -9.  However,
+         -- nprm<-1 or nret<-1 is semantically incorrect at this time.
+         if nprm < -1 or nprm >    1014 then error("Bad nprm: " .. nprm) end
+         if nret < -1 or nret > 2097142 then error("Bad nret: " .. nret) end
+         local len = nprm+9 + (nret+9)*1024
+         tbl_list[tcnt][f2] = {
+            typ = f1,
+            len = len,
+            flb = 1,
+            fub = tonumber(f4),
+         }
+
+      elseif f1=="T_tbl" then -- Node declaration.
+         local flb,fub = f4:match("([+-]?%d+):([+-]?%d+)")
+         tbl_list[tcnt][f2] = {
+            typ = f1,
+            tname = f3,
+            len = 0,
+            flb = tonumber(flb),
+            fub = tonumber(fub),
+         }
+         add2stbl(f3)
+
+      elseif f1=="wkt" then -- WKT definition.
+         assert(rev_ta[f3], "No type declaration for: " .. f3)
+         local flb,fub = f4:match("([+-]?%d+):([+-]?%d+)")
+         wcnt = wcnt + 1
+         wkt_list[wcnt] = {
+            name = f2,
+            tname = f3,
+            flb = tonumber(flb),
+            fub = tonumber(fub),
+            ti=rev_ta[f3],
+         }
+         add2stbl(f3)
+
+      else
+         error("Bad input: " .. line)
+      end
+   end
+
+   -- main loop over input lines. The + in gmatch skips blank lines
+   for line in string.gmatch(p:read("*all"), '[^\n]+') do
+      -- match() here skips preprocessor directives like line numbers
+      if not line:match("^#") then
+         handle_line(line)
+      end
+   end
+
+   -- make sure every struct was opened and closed
+   if ct then
+      error("(At end) ct should be nil: " .. ct)
+   end
+
+   -- close preprocessor pipe and temporary input file
+   p:close()
+   os.remove(tmpfile_name)
+end
+
+
+local function generate_string_table()
+   print("// Part 1: The string table.")
+   for k,v in pairsbyvalues(stbl) do
+      print("#define " .. k .. " " .. v)
+   end
+   print("")
+end
+
+
+local function generate_element_tables()
+   print("// Part 2: The element tables.")
+   local f1 = function(ti, tname, t)
+      print("static ir_element " .. tname .. "[] = { // " .. typename[ti])
+      for k,v in pairs(t) do
+         local idesc = rev_ta[v.tname] or -1
+         local szo = string.format("S(%s)", stbl[v.tname] or stbl[tmap[v.typ]])
+         if v.typ == "T_str" and v.fub > 0 then -- An array of strings.
+            -- Stride == Fortran "len" of item.
+            szo = string.format("%8d", v.len)
+         end
+         print(string.format(
+                  "  { Q(%s),%3d, %s, O(%s,%s), %8d,%3d,%3d, %s },",
+                  stbl[k], idesc, szo, stbl[typename[ti]], stbl[k],
+                  v.len, v.flb, v.fub, v.typ
+         ))
+      end
+      print("  { 0 }\n};\n")
+   end
+
+   for i=0,tcnt do
+      f1(i, string.format("ir_tbl%03d", i), tbl_list[i])
+   end
+end
+
+
+local function generate_table_pointers()
+   print("// Part 3: A list of pointers to the ir_element tables.")
+   print("static ir_element *ir_ta[] = {")
+   for i=0,tcnt do
+      print(string.format("  ir_tbl%03d, // %s",i,typename[i]))
+   end
+   print("};\n")
+end
+
+
+local function generate_wkt_table()
+   print("// Part 4: List the well-known tables.")
+   print("static ir_wkt_desc ir_wktt[] = {")
+   for i=0,wcnt do
+      local t = wkt_list[i]
+      local nm  = stbl[t.name]
+      local tnm = stbl[t.tname]
+      print(string.format(
+               "  { &%s, {Q(%s),%3d,S(%s),0,0,%3d,%3d,T_tbl }}, // %s",
+               nm,nm,t.ti,tnm,t.flb,t.fub,t.name
+      ))
+   end
+   print("};")
+end
+
+--
+-- Real work of irep-generate starts here
+--
+parse_args()
+generate_preamble()
+
+if mode.fortran then
+   generate_fortran()
+   os.exit(0)
+end
+
+
+generate_includes(io.output())
+
+-- first elements in the string table are from tmap
+for k,v in pairs(tmap) do
+   add2stbl(v)
+end
+process_headers()
+
+-- offset tables are specific to each wkt file
+if mode.tables then
+   generate_string_table()
+   generate_element_tables()
+end
+
+-- these lookup tables are global and need to be generated once with
+-- *all* wkt files
+if mode.index then
+   generate_table_pointers()
+   generate_wkt_table()
+end
