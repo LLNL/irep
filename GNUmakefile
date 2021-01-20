@@ -20,10 +20,8 @@ FFLAGS = -O2 -g -cpp -ffree-form -ffree-line-length-0 -fbackslash
 
 RANLIB = $(shell command -v ranlib 2> /dev/null || true)
 
-COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -DIREP_LANG_C       -I.
-COMPILE.f = $(FC) $(FFLAGS) $(CPPFLAGS) -DIREP_LANG_FORTRAN -I.
-%.o : %.c       ; $(COMPILE.c) -c $<
-%.o %.mod : %.f ; $(COMPILE.f) -c $<
+# basic C and Fortran compilation rules come from wkt.mk
+include wkt.mk
 
 # only target here is the IREP library itself
 all: libIR.a
@@ -36,15 +34,15 @@ libIR.a: ir_extern.o irep.o ir_std.o
 	$(RANLIB) $@
 
 ir_generate.h: ir_macros.h ir_std.h
-	CPPFLAGS=-I. bin/irep-generate $(sort $^) > $@
+	CPPFLAGS=-I. $(irep_generate) $(sort $^) > $@
 
 irep.o: irep.c ir_generate.h
 
 ir_std.f: ir_std.h
-	bin/irep-generate --mode fortran ir_std.h > $@
+	$(irep_generate) --mode fortran ir_std.h > $@
 
 ir_extern.f: ir_extern.h
-	bin/irep-generate --mode fortran ir_extern.h > $@
+	$(irep_generate) --mode fortran ir_extern.h > $@
 ir_extern.o ir_extern.mod: ir_std.mod
 
 .PHONY: clean
