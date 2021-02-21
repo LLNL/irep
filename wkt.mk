@@ -10,9 +10,37 @@
 #
 # The wkt library will be generated and built from the provided WKT headers.
 #
+# You can need to set some standard GNU Make variables to control how
+# WKT libs are generated:
+#
+#   CC:       Full path to C compiler.
+#   FC:       Full path to Fortran compiler.
+#   CFLAGS:   Compiler flags for C.
+#   FFLAGS:   Compiler flags for Fortran.
+#   CPPFLAGS: Flags for the C preprocessor.
+#
+# It's less likely that you'll need to update these:
+#
+#   AR: implicitly provided by GNU Make
+#   RANLIB: ranlib program (optional)
+
+CC = gcc
+FC = gfortran
+CFLAGS = -O2 -g
+FFLAGS = -O2 -g -cpp -ffree-form -ffree-line-length-0 -fbackslash
+
+# RANLIB can be optionally set
+RANLIB = $(shell command -v ranlib 2> /dev/null || true)
+
+# find location of this makefile so we can find irep tools
+irep_dir := $(dir $(lastword $(MAKEFILE_LIST)))
+
+# ensure generator can find headers from irep
+CPPFLAGS += -I$(irep_dir)
+export CPPFLAGS
 
 # utility program for generating code from wkt.h files
-irep_generate = bin/irep-generate
+irep_generate = $(irep_dir)/bin/irep-generate
 
 # Rules for compiling C and Forran files -- note that the appropriate
 # IREP -D flag must be set for files that include IREP headers.
@@ -30,12 +58,14 @@ COMPILE.f = $(FC) $(FFLAGS) $(CPPFLAGS) -DIREP_LANG_FORTRAN -I.
 wkt_%.f: wkt_%.h
 	$(irep_generate) --mode fortran $< > $@
 
+# helper function for finding wkt files with absolute paths
+containing = $(foreach v,$2,$(if $(findstring $1,$v),$v))
+
 # These functions define the pieces of a wkt library.
 # They're defined as functions so they can be used as prerequisites
 # in our doubly expanded pattern rule for WKT libs below.
-ir-gen  = $(filter %.h,$(foreach v,$($(1).wkt_src),$(if $(findstring wkt_,$v),$v)))
-ir-wkt  = $(filter wkt_%,$(notdir $(call ir-gen,$(1))))
-ir-wobj = $(subst .h,.o,$(call ir-wkt,$(1)))
+ir-wkt  = $(filter %.h,$(call containing,wkt_,$($(1))))
+ir-wobj = $(subst .h,.o,$(foreach v,$(call ir-wkt,$(1)),$(notdir $v)))
 
 # add a little flair to the output
 cgreen = "\033[1;32m"
@@ -44,7 +74,20 @@ cend    = "\033[0m"
 # Any target like libfoo-wkt.a will be built like a wkt library.
 # The user needs only define foo.wkt_src to make the magic happen.
 .SECONDEXPANSION:
-lib%-wkt.a: $$(call ir-wobj,$$*)
+lib%-wkt.a: $$(call ir-wobj,$$*.wkt_src)
+	$(if $^,,$(error "No wkt_*.h files were provided for '$@'.  Did you set $*.wtk_src?"))
 	$(AR) -rc $@ $^
 	$(RANLIB) $@
 	@echo -e Successfully created IREP WKT library $(cgreen)$@$(cend).
+	$(info $^)
+
+%-wkt-index.c: $$(call ir-wkt,$$*.wkt_index_src)
+	$(if $^,,$(error "No wkt_*.h files were provided for '$@'.  Did you set $*.wtk_index_src?"))
+	$(irep_generate) $(irep_dir)/ir_std.h $^ > $@
+
+# The index library contains a set of tables that allow us to look up
+# wkt structs by name.
+lib%-wkt-index.a: $$*-wkt-index.o
+	$(AR) -rc $@ $(filter %.o,$^)
+	$(RANLIB) $@
+	@echo -e Successfully created IREP WKT index library $(cgreen)$@$(cend).

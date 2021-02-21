@@ -17,20 +17,20 @@ local function usage(exitcode)
    print("Positional Arguments:")
    print("  HEADERS          wkt_*.h files from which to generate code, e.g.:")
    print("                     wkt_geometry.h wkt_physics.h ...")
-   print("Generation options (by default, generate tables + index)")
-   print("  --mode tables    generate only tables")
-   print("  --mode index     generate only index")
-   print("  --mode fortran   generate fortran module from a single wkt header")
    print()
-   print("  --module-name    name for generated module (fortran mode only,")
-   print("                   inferred from header name by default)")
+   print("Generation options")
+   print("  --mode index       generate only index (default)")
+   print("  --mode fortran     generate fortran module from a single wkt header")
+   print()
+   print("  --module-name      name for generated module (fortran mode only,")
+   print("                     inferred from header name by default)")
    print()
    print("Environment variables:")
    print("  CPP              C preprocessor to use (default gcc -E)")
    print("  CPPFLAGS         flags for the C preprocessor")
    print()
    print("Help:")
-   print("  -h               display this message")
+   print("  -h, --help       display this message")
 
    os.exit(exitcode or 1)
 end
@@ -48,19 +48,17 @@ local tmap = {
 }
 
 -- Which parts of the IREP should be in the output:
---  'tables':  generate the header-specific table data structures
---  'index':   generate the global lookup table for *all* wkt's
+--  'index':   generate the global lookup tables for *all* wkt's
 --  'fortran': generate a fortran .o and .mod file from one header
--- By default, both are generated, but for modular codes they can be split so
--- that the global lookup tables are mode generated once.
+-- The default mode is 'index'. We use a table here in case we want
+-- more than one mode at some point.
 local mode_values = {
-   ["tables"] = true,
    ["index"] = true,
    ["fortran"] = true,
 }
 
--- generate tables and index by default
-local mode = { ["tables"] = true, ["index"] = true }
+-- generate index by default
+local mode = { ["index"] = true }
 
 -- names of WKT headers for which we should generate code
 local wkt_headers = {}
@@ -94,7 +92,7 @@ local function parse_args()
    -- parse any command line options
    local i = 1
    while i <= #arg and arg[i]:match("^-") do
-      if arg[i] == "-h" then
+      if arg[i] == "-h" or arg[i] == "--help" then
          usage(0)
       elseif arg[i] == "--mode" then
          i = i + 1
@@ -123,10 +121,10 @@ local function parse_args()
 
    -- accumulate header names in wkt_headers
    while i <= #arg do
-      header = arg[i]
+      local header = arg[i]
 
       -- header needs to end in .h, as C preprocessors are picky
-      if not header:match("\.h$") then
+      if not header:match("%.h$") then
          print("error: bad header name: '" .. header .. "'")
          print("must end with '.h'")
          os.exit(1)
@@ -140,6 +138,33 @@ local function parse_args()
 end
 
 
+-- execute a command and fail if it doesn't succeed.
+-- otherwise, return a open file handle to its output,
+-- and the name of the output file.
+--
+-- caller must close the stream and remove the file.
+--
+-- we can't use something simpler like popen in lua 5.1 unless we want to
+-- throw out the error code. -- 5.2 has better error reporting but we
+-- don't require a lua that new.
+function execute_command(command)
+   local tmpfile = os.tmpname() .. ".out"
+   local exit = os.execute(command .. ' > ' .. tmpfile)
+   if exit ~= 0 then
+      print("Command failed: '" .. command .. "'")
+      os.exit(1)
+   end
+   return io.open(tmpfile, "r"), tmpfile
+end
+
+
+-- path to dir containing this lua script
+function script_dir()
+   local str = debug.getinfo(2, "S").source:sub(2)
+   return str:match("(.*/)")
+end
+
+
 -- Takes one wkt_*.h and generates the corresponding fortran code
 local function generate_fortran()
    if #wkt_headers ~= 1 then
@@ -150,19 +175,20 @@ local function generate_fortran()
    -- infer module name from header if it's not provided
    local header = wkt_headers[1]
    if not fortran_module_name then
-      fortran_module_name =  header:gsub(".h$", "")
+      fortran_module_name = header:gsub(".h$", ""):gsub(".*/", "")
    end
 
    -- arguments for the preprocessor
-   cpp_args = {
+   local cpp_args = {
       cpp,
       "-DIR_WKT_NAME=" .. fortran_module_name,
       "-DIREP_LANG_FORTRAN",
+      "-I" .. script_dir() .. "../",  -- always include ir_*.h
       cppflags,
       header,
    }
-   cpp_cmd = table.concat(cpp_args, " ")
-   local p = assert(io.popen(cpp_cmd, "r"))
+   local cpp_cmd = table.concat(cpp_args, " ")
+   local p, tmpfile = execute_command(cpp_cmd)
 
    -- read through lines of input and filter out preprocessor artifacts
    for line in p:lines() do
@@ -173,6 +199,7 @@ local function generate_fortran()
       end
    end
    p:close()
+   os.remove(tmpfile)
    os.exit(0)
 end
 
@@ -198,7 +225,9 @@ end
 -- generate includes for input headers at top of output
 local function generate_includes(ostream)
    for _, header in ipairs(wkt_headers) do
-      ostream:write(string.format("#include \"%s\"\n", header))
+      -- we want the #include to *just* be the filename, not full path
+      local filename = header:match("/([^/]+)$") or header
+      ostream:write(string.format("#include \"%s\"\n", filename))
    end
    ostream:write("\n")
 end
@@ -263,9 +292,9 @@ local function process_headers()
    tmpfile:close()
 
    -- run the preprocessor on the WKT includes and read its output
-   cpp_cmd = table.concat({
-         cpp, cppflags, "-DIREP_GENERATE", tmpfile_name}, " ")
-   local p = assert(io.popen(cpp_cmd, "r"))
+   local cpp_args = {cpp, cppflags, "-DIREP_GENERATE", tmpfile_name}
+   local cpp_cmd = table.concat(cpp_args, " ")
+   local p, outfile_name = execute_command(cpp_cmd)
 
    local ct -- type name of the struct being declared, e.g., "irt_sources"
 
@@ -356,6 +385,7 @@ local function process_headers()
    -- close preprocessor pipe and temporary input file
    p:close()
    os.remove(tmpfile_name)
+   os.remove(outfile_name)
 end
 
 
@@ -396,7 +426,7 @@ end
 
 local function generate_table_pointers()
    print("// Part 3: A list of pointers to the ir_element tables.")
-   print("static ir_element *ir_ta[] = {")
+   print("ir_element *ir_ta[] = {")
    for i=0,tcnt do
       print(string.format("  ir_tbl%03d, // %s",i,typename[i]))
    end
@@ -406,8 +436,8 @@ end
 
 local function generate_wkt_table()
    print("// Part 4: List the well-known tables.")
-   print("static ir_wkt_desc ir_wktt[] = {")
-   for i=0,wcnt do
+   print("ir_wkt_desc ir_wktt[] = {")
+   for i=0, wcnt do
       local t = wkt_list[i]
       local nm  = stbl[t.name]
       local tnm = stbl[t.tname]
@@ -417,6 +447,9 @@ local function generate_wkt_table()
       ))
    end
    print("};")
+   print()
+   print("// Total number of well-known tables in this index");
+   print(string.format("size_t ir_wktt_size = %d;", wcnt + 1))
 end
 
 --
@@ -439,15 +472,23 @@ for k,v in pairs(tmap) do
 end
 process_headers()
 
--- offset tables are specific to each wkt file
-if mode.tables then
-   generate_string_table()
-   generate_element_tables()
-end
+-- structures from ir_index.h are used in the tables below.
+print('#include "ir_index.h"')
+print()
 
--- these lookup tables are global and need to be generated once with
--- *all* wkt files
-if mode.index then
-   generate_table_pointers()
-   generate_wkt_table()
-end
+-- Q, str, O, S are used only in the generated output, and they
+-- probably shouldn't be exposed outside irep.
+print("#define Q(s) str(s)")
+print("#define str(x) #x")
+print("#define O(a,b) offsetof(a,b)")
+print("#define S(a) sizeof(a)")
+print()
+
+-- offset tables for tables and sub-tables
+generate_string_table()
+generate_element_tables()
+
+-- top-level tables go in this index, which is where ir_read starts
+-- looking when it translates irep expressions.
+generate_table_pointers()
+generate_wkt_table()
