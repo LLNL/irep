@@ -555,23 +555,21 @@ local function _wkt_to_loadable_lua(header)
 end
 
 
-local function generate_lua()
-   if #wkt_headers ~= 1 then
-      print("error: `irep-generate --mode lua` takes exactly one header")
-      os.exit(1)
-   end
-
-   local header = wkt_headers[1]
+--
+-- given a wkt header, build lua tables recursively.
+--
+local function build_lua_tables(header, field, open, close)
    simple_tables = _wkt_to_loadable_lua(header)
    assert(loadstring(simple_tables))()
 
+   -- handler functions are no-ops if not provided
+   field = field or function() end
+   open = open or function() end
+   close = close or function() end
+
    local seen = {}
-   tdump = function (tname, t, lrep, level, ostream)
-      -- construct a string to this table. if tname is a number, this is
-      -- one table in a vector.
-      local indent = string.rep(" ", level * 2)
-      local fmt = (type(tname) == "number") and "%s[%d] = {\n" or "%s%s = {\n"
-      ostream:write(string.format(fmt, indent, tname))
+   tdump = function (tname, t, lrep, level)
+      open(tname, level)
 
       -- sort keys in the table so they print out in alphabetical order
       local klist = {}
@@ -594,34 +592,79 @@ local function generate_lua()
          if type(v) == "table" then
             if not seen[v] then -- do not recurse on self-reference.
                seen[v] = t
-               tdump(k, v, nlrep, level + 1, ostream)
+               tdump(k, v, nlrep, level + 1)
             end
          else
             -- parse raw strings like:
             --     typ %%% default %%% lo %%% hi %%% docstring
-            typ, default, lo, hi, doc = unpack(split(v, "%%%%%%"))
+            local typecode, default, strlen, nelem, doc = unpack(
+               split(v, "%%%%%%"))
 
-            -- clean up default after splitting
-            default = trim(default)
-            if default == 'function' then
-               default = 'function() end'
-            end
-
-            -- handle multi-line docs with multi-line --[[ ]] comments
-            doc = trim(doc or ''):match("^%((.*)%)$") or ''
-            doc = doc:match("[^%s]+") and ("  --[[" .. doc .. "]]") or ''
-            ostream:write(
-               string.format("%s  %s = %s,%s\n", indent, k, default, doc))
+            local field_tab = {
+               ["name"]     = k,
+               ["value"]    = v,
+               ["nlrep"]    = nlrep,
+               ["typecode"] = typecode,
+               ["default"]  = default,
+               ["strlen"]   = strlen,
+               ["nelem"]    = nelem,
+               ["doc"]      = doc,
+            }
+            field(tname, field_tab, level)
          end
       end
-
-      -- close out the table
-      local comma = (level == 0) and '' or ','
-      ostream:write(string.format("%s}%s\n", indent, comma))
+      close(tname, level)
    end
 
-   local top = assert(header:match("wkt_([^\.]*)\.h"))
-   tdump(top, _G[top], top, 0, io.output())
+   local top = assert(header:match("wkt_([^%.]*)%.h"))
+   tdump(top, _G[top], top, 0)
+end
+
+
+local function generate_lua()
+   if #wkt_headers ~= 1 then
+      print("error: `irep-generate --mode lua` takes exactly one header")
+      os.exit(1)
+   end
+   local header = wkt_headers[1]
+   local ostream = io.output()
+
+   local function indent(level)
+      return string.rep(" ", level * 2)
+   end
+
+   local function open(tname, level)
+      -- construct a string to this table. if tname is a number, this is
+      -- one table in a vector.
+      local fmt = (type(tname) == "number") and "%s[%d] = {\n" or "%s%s = {\n"
+      ostream:write(string.format(fmt, indent(level), tname))
+   end
+
+   local function field(tname, f, level)
+      -- clean up default after splitting
+      default = trim(f.default)
+      if default == 'function' then
+         default = 'function() end'
+      end
+
+      -- handle multi-line docs with multi-line --[[ ]] comments
+      doc = trim(f.doc or ''):match("^%((.*)%)$") or ''
+      doc = doc:match("[^%s]+") and ("  --[[" .. doc .. "]]") or ''
+      ostream:write(
+         string.format(
+            "%s  %s = %s,%s\n",
+            indent(level), f.name, default, doc
+         )
+      )
+   end
+
+   -- close out the table
+   local function close(tname, level)
+      local comma = (level == 0) and '' or ','
+      ostream:write(string.format("%s}%s\n", indent(level), comma))
+   end
+
+   build_lua_tables(header, field, open, close)
 end
 
 
