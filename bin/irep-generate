@@ -27,6 +27,10 @@ local function usage(exitcode)
    print("  --module-name    name for generated module (fortran mode only,")
    print("                   inferred from header name by default)")
    print()
+   print("Documentation options (for use with --mode rst)")
+   print("  --doc-dir DIR    top-level documentation directory (default is .)")
+   print("                   this is where we link to details/intros for WKTs")
+   print()
    print("Environment variables:")
    print("  CPP              C preprocessor to use (default gcc -E)")
    print("  CPPFLAGS         flags for the C preprocessor")
@@ -73,6 +77,18 @@ local function trim(str)
    return str:match("^%s*(.-)%s*$")
 end
 
+
+-- Lua doesn't have a builtin way to test if a file exists
+function file_exists(name)
+   local f=io.open(name,"r")
+   if f~=nil then
+      io.close(f)
+      return true
+   end
+   return false
+end
+
+
 -- IREP type definitions
 local tmap = {
   T_int = "int",
@@ -106,6 +122,9 @@ local fortran_module_name
 -- CPP and CPPFLAGS come from the environment
 local cpp = os.getenv("CPP") or "gcc -E"
 local cppflags = os.getenv("CPPFLAGS") or ""
+
+-- location to search for additional rst files for docs
+local doc_dir = "."
 
 
 -- sort keys of a table and return them as an integer-indexed table
@@ -143,6 +162,9 @@ local function parse_args()
       elseif arg[i] == "--module-name" then
          i = i + 1
          fortran_module_name = arg[i]
+      elseif arg[i] == "--doc-dir" then
+         i = i + 1
+         doc_dir = arg[i]
       else
          print("invalid option: '" .. arg[i] .. "'")
          os.exit(1)
@@ -741,6 +763,53 @@ local rst_types = {
 }
 
 
+-- generate a list of candidate files to search for "details" on a field
+-- in a WKT.  For a field like material.ceilings.density, the list would
+-- look like:
+--
+--   material/ceilings-density.rst
+--   material/ceilings.rst
+--   material/material.rst
+--
+local function details_file_candidates(nlrep)
+   local candidates = {}
+   local directory, rest = nlrep:match('^([^%.]*)%.?(.*)$')
+   local last = directory
+   table.insert(
+      candidates,
+      doc_dir .. "/" .. directory .. "/" .. directory .. ".rst"
+   )
+
+   local component
+   while rest ~= '' do
+      component, rest = rest:match('^([^%.]*)%.?(.*)$')
+      local sep = (#candidates == 1) and "/" or "-"
+      last = last .. sep .. component
+      table.insert(candidates, 1, doc_dir .. "/" .. last .. ".rst")
+   end
+   return candidates
+end
+
+
+-- Searches for details file associated with a field in a WKT.
+--
+-- First generates the candidates list (see details_file_candidates). The
+-- first file in this list that exists will be returned and used as the
+-- target for a "details" link in the documentation. If no such file
+-- exists, this returns nil.
+local function find_details_file(nlrep)
+   local candidates = details_file_candidates(nlrep)
+   for _, path in pairs(candidates) do
+      if file_exists(path) then
+         return path
+      end
+   end
+   return nil
+end
+
+
+-- Geneate RST documentation for a wkt file.
+-- This is what --mode rst ends up invoking.
 local function generate_rst()
    if #wkt_headers ~= 1 then
       print("error: `irep-generate --mode rst` takes exactly one header")
@@ -788,17 +857,28 @@ local function generate_rst()
 
    -- this prints fields in docs
    local function field(f)
-      no_array_nlrep = f.nlrep:gsub("%[%d+%]", "")
-      identifier = no_array_nlrep:match(string.format("^%s\.(.*)$", top))
+      local no_array_nlrep = f.nlrep:gsub("%[%d+%]", "")
+      local identifier = no_array_nlrep:match(string.format("^%s\.(.*)$", top))
 
       print()
       print(string.format(".. _%s:", no_array_nlrep))
       print()
-      print(identifier)
 
+      -- generate details link if there's a file to link to
+      details_link = ''
+      details_file = find_details_file(f.nlrep)
+      if details_file then
+         details_link = string.format(
+            " :doc:`(details) <%s>`", details_file:match("^(.*).rst$")
+         )
+      end
+      print(string.format("%s%s", identifier, details_link))
+
+      -- print link to type-specific help
       local formatter = rst_types[f.typecode]
       print(string.format("    %s", formatter(f)))
 
+      -- print docstring itself
       if f.doc ~= '' then
          print(string.format("    %s", f.doc))
       end
