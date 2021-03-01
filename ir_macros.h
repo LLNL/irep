@@ -1,7 +1,7 @@
-// Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
-// at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
-// busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
-// See ./Copyright for additional notices.
+// Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+// IREP Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: MIT
 
 #ifndef ir_macros_h
 #define ir_macros_h

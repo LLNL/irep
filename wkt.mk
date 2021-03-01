@@ -1,4 +1,10 @@
-# This should be included by makefiles that need to build IREP WKT libraries.
+# Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+# IREP Project Developers. See the top-level LICENSE file for details.
+#
+# SPDX-License-Identifier: MIT
+
+# wkt.mk should be included by makefiles that need to build IREP WKT
+# libraries.
 #
 # To build a wkt library, e.g., `libfoo-wkt.a`, simply include this file,
 # define a variable `foo.wkt_src`, and add the WKT library as a make target.

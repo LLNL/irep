@@ -1,19 +1,23 @@
 #!/usr/bin/env lua
+-- Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+-- IREP Project Developers. See the top-level LICENSE file for details.
+--
+-- SPDX-License-Identifier: MIT
 
 -- Convert lua tables into IR macros.
-
+--
 -- For scalars, the type and value of the assigned value dictates the
 -- type and default value of the IR macro output.
 --   a = 3    -- is an integer named "a" with default value "3"
 --   b = 3.14 -- is a double, with default "3.14".
-
+--
 -- For vectors, we expect the type of v[1] to be the type of the vector,
 -- v[2] to be the number of elements desired, and v[3] the default value.
 --   aa = { 1, 10, 3 } -- is integer, with 10 elements, default == 3.
-
+--
 -- Note that vector strings don't currently accept default values.  For
 -- string vectors, v[1] is type, v[2] is the length, v[3] is nelems.
-
+--
 -- Functions need to be just functions: f = function(x) return 1 end.
 -- Remember that scalar string lengths default to 32.
 

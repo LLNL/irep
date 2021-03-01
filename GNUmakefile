@@ -1,3 +1,8 @@
+# Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+# IREP Project Developers. See the top-level LICENSE file for details.
+#
+# SPDX-License-Identifier: MIT
+
 # To use this makefile, lua needs to be in your PATH.
 #
 

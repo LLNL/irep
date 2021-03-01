@@ -1,3 +1,8 @@
+# Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+# IREP Project Developers. See the top-level LICENSE file for details.
+#
+# SPDX-License-Identifier: MIT
+
 # IREP lives two directories above this config file
 get_filename_component(irep_DIR ${CMAKE_CURRENT_LIST_DIR}/../.. ABSOLUTE)
 
