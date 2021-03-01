@@ -718,49 +718,51 @@ end
 ---
 
 local rst_types = {
-   ["sd"] = function (f)
-      return string.format(":doc:`default=%s <../glossary/sdbl>`;", f.default)
-   end,
-   ["si"] = function (f)
-      return string.format(":doc:`default=%s <../glossary/sint>`;", f.default)
-   end,
-   ["sb"] = function (f)
-      return string.format(":doc:`default=%s <../glossary/slog>`;", f.default)
-   end,
-   ["ss"] = function (f)
-      return string.format(
-         ":doc:`default=%s,strlen=%d <../glossary/sstr>`;",
-         f.default, f.strlen, f.nelem
-      )
-   end,
-   ["vd"] = function (f)
-      return string.format(
-         ":doc:`default=%s,nelem=%d <../glossary/vdbl>`;", f.default, f.nelem
-      )
-   end,
-   ["vi"] = function (f)
-      return string.format(
-         ":doc:`default=%s,nelem=%d <../glossary/vint>`;", f.default, f.nelem
-      )
-   end,
-   ["vb"] = function (f)
-      return string.format(
-         ":doc:`default=%s,nelem=%d <../glossary/vlog>`;", f.default, f.nelem
-      )
-   end,
-   ["vs"] = function (f)
-      return string.format(
-         ":doc:`default=%s,strlen=%d,nelem=%d <../glossary/vstr>`;",
-         f.default, f.strlen, f.nelem
-      )
-   end,
-   ["lf"] = function (f)
-      return string.format(
-         ":doc:`default=%s(nprm=%d,nret=%d) <../glossary/callback>`;",
-         f.default, f.strlen, f.nelem
-      )
-   end,
+   ["sd"] = ":doc:`double <%s/glossary/sdbl>`",
+   ["si"] = ":doc:`integer <%s/glossary/sint>`",
+   ["sb"] = ":doc:`boolean <%s/glossary/slog>`",
+   ["ss"] = ":doc:`string <%s/glossary/sstr>`",
+   ["vd"] = ":doc:`double vector <%s/glossary/vdbl>`",
+   ["vi"] = ":doc:`integer vector <%s/glossary/vint>`",
+   ["vb"] = ":doc:`boolean vector <%s/glossary/vlog>`",
+   ["vs"] = ":doc:`string vector <%s/glossary/vstr>`",
+   ["lf"] = ":doc:`function <%s/glossary/callback>`",
 }
+
+
+local function rst_type(f)
+   if f.typecode == "sd" then
+      return string.format(":doc:`double <%s/glossary/sdbl>`", doc_dir)
+   elseif f.typecode == "si" then
+      return string.format(":doc:`integer <%s/glossary/sint>`", doc_dir)
+   elseif f.typecode == "sb" then
+      return string.format(":doc:`boolean <%s/glossary/slog>`", doc_dir)
+   elseif f.typecode == "ss" then
+      return string.format(
+         ":doc:`string, strlen=%d <%s/glossary/sstr>`", f.strlen, doc_dir)
+   elseif f.typecode == "vd" then
+      return string.format(
+         ":doc:`vector double, nelem=%d <%s/glossary/vdbl>`", f.nelem, doc_dir)
+   elseif f.typecode == "vi" then
+      return string.format(
+         ":doc:`vector integer, nelem=%d <%s/glossary/vint>`",
+         f.nelem, doc_dir)
+   elseif f.typecode == "vb" then
+      return string.format(
+         ":doc:`vector boolean, nelem=%d <%s/glossary/vlog>`",
+         f.nelem, doc_dir)
+   elseif f.typecode == "vs" then
+      return string.format(
+         ":doc:`vector string, strlen=%d, nelem=%d <%s/glossary/vstr>`",
+         f.nelem, f.strlen, f.nelem, doc_dir)
+   elseif f.typecode == "lf" then
+      return string.format(
+         ":doc:`callback, nprm=%d, nret=%d <%s/glossary/callback>`",
+         f.strlen, f.nelem, doc_dir)
+   else
+      error("Bad typecode: " .. f.typecode)
+   end
+end
 
 
 -- generate a list of candidate files to search for "details" on a field
@@ -869,14 +871,16 @@ local function generate_rst()
       details_file = find_details_file(f.nlrep)
       if details_file then
          details_link = string.format(
-            " :doc:`(details) <%s>`", details_file:match("^(.*).rst$")
-         )
+            " :doc:`(details) <%s>`", details_file:match("^(.*).rst$"))
       end
-      print(string.format("%s%s", identifier, details_link))
 
       -- print link to type-specific help
-      local formatter = rst_types[f.typecode]
-      print(string.format("    %s", formatter(f)))
+      typename = rst_type(f)
+      default = (f.default == 'function') and 'no-op' or f.default
+
+      print(string.format("%s%s", identifier, details_link))
+      print(string.format("    %s; default= ``%s``", typename, default))
+      print()
 
       -- print docstring itself
       if f.doc ~= '' then
