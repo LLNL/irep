@@ -5,19 +5,12 @@
 
 include ../../wkt.mk
 
-# this build requires lua
-lua := $(shell command -v lua 2> /dev/null)
-lua_root = $(dir $(dir $(lua)))
-lua_include = $(lua_root)/include
-lua_lib = $(lua_root)/lib
-
 # Gnu compilers (gcc, g++, gfortran) require version 4.7.4 or greater.
 
 .DEFAULT_GOAL := test
 
 obj = f_main.o
 prog = f_prog
-compile = $(FC)
 input = input.lua
 
 f_main.o: wkt_table4.mod wkt_table1.mod
@@ -25,17 +18,15 @@ f_main.o: wkt_table4.mod wkt_table1.mod
 wkt.lib = libprog-wkt.a libprog-wkt-index.a
 prog.wkt_src = $(wildcard wkt_*.h)
 prog.wkt_index_src = $(prog.wkt_src)
-CPPFLAGS += -I. -I$(irep_dir)
-export CPPFLAGS
 
 test: $(prog)
 	./$(prog) $(input)
 
 $(prog): $(obj) $(wkt.lib)
-	$(compile) -o $@ $(obj) \
-		-L$(lua_lib) -L$(irep_dir) -L. \
+	$(COMPILE.f) -o $@ $(obj) \
+		$(LUA_INCLUDE) -I. -L$(irep_dir) -L. \
 		-Wl,--start-group -lprog-wkt -lIR -lprog-wkt-index -Wl,--end-group \
-		-llua -lm -lgfortran -ldl
+		$(LUA_LIBRARIES) -lm -lgfortran -ldl
 
 .PHONY: clean
 clean:

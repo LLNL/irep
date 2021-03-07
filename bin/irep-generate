@@ -241,8 +241,9 @@ local function generate_fortran()
       cpp,
       "-DIR_WKT_NAME=" .. fortran_module_name,
       "-DIREP_LANG_FORTRAN",
-      "-I" .. script_dir() .. "../",  -- always include ir_*.h
       cppflags,
+      "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I.",
       header,
    }
    local cpp_cmd = table.concat(cpp_args, " ")
@@ -349,9 +350,10 @@ local function process_headers()
    -- run the preprocessor on the WKT includes and read its output
    local cpp_args = {
       cpp,
-      cppflags,
       "-DIREP_GENERATE",
-      "-I" .. script_dir() .. "../",  -- always include ir_*.h
+      cppflags,
+      "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I.",
       tmpfile_name
    }
    local cpp_cmd = table.concat(cpp_args, " ")
@@ -566,9 +568,10 @@ local function _wkt_to_loadable_lua(header)
    -- run the preprocessor on the WKT header and generate lua
    local cpp_args = {
       cpp,
-      cppflags,
       "-DIREP_LANG_LUA",
-      "-I" .. script_dir() .. "../",  -- always include ir_*.h
+      "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I.",
+      cppflags,
       tmp_header
    }
    local cpp_cmd = table.concat(cpp_args, " ")

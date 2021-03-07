@@ -25,3 +25,5 @@ target_link_libraries(
   prog-wkt
   ${LUA_LIBRARIES}
 )
+
+include_directories("${LUA_INCLUDE_DIR}")
