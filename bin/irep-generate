@@ -347,7 +347,13 @@ local function process_headers()
    tmpfile:close()
 
    -- run the preprocessor on the WKT includes and read its output
-   local cpp_args = {cpp, cppflags, "-DIREP_GENERATE", tmpfile_name}
+   local cpp_args = {
+      cpp,
+      cppflags,
+      "-DIREP_GENERATE",
+      "-I" .. script_dir() .. "../",  -- always include ir_*.h
+      tmpfile_name
+   }
    local cpp_cmd = table.concat(cpp_args, " ")
    local p, outfile_name = execute_command(cpp_cmd)
 
@@ -558,7 +564,13 @@ local function _wkt_to_loadable_lua(header)
    local tmp_header = mark_up_whitespace(header)
 
    -- run the preprocessor on the WKT header and generate lua
-   local cpp_args = {cpp, cppflags, "-DIREP_LANG_LUA", tmp_header}
+   local cpp_args = {
+      cpp,
+      cppflags,
+      "-DIREP_LANG_LUA",
+      "-I" .. script_dir() .. "../",  -- always include ir_*.h
+      tmp_header
+   }
    local cpp_cmd = table.concat(cpp_args, " ")
    local p, outfile_name = execute_command(cpp_cmd)
 
@@ -981,7 +993,7 @@ local function generate_rst()
    end
 
    -- read irep-types.rst from the irep directory
-   local types_filename = script_dir().."/../share/irep/irep_types.rst"
+   local types_filename = script_dir().."/../docs/irep_types.rst"
    print(string.format("Creating irep_types.rst"))
    copy_file(types_filename, "irep_types.rst")
 end

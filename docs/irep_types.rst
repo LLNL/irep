@@ -4,7 +4,7 @@
 .. SPDX-License-Identifier: MIT
 
 =========================
-About ``irep`` data types
+About IREP data types
 =========================
 
 .. include:: <isonum.txt>
