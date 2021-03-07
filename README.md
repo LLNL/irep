@@ -14,12 +14,20 @@ Fortran, and Lua.
 There are some high-level docs here to get you started, but you can find
 more in the [full IREP Documentation](https://irep.readthedocs.io/).
 
+## Installation
+
+To build IREP, run `make` in the root directory. This will create
+`libIR.a`.  IREP does not (yet) have a proper installation target.
+
 ## Building with IREP
 
 IREP has integration for both CMake and gmake-based builds. You can find
 more about how to intgrate IREP into your project here:
 
 * [IREP Build Docs](https://irep.readthedocs.io/en/latest/build.html)
+
+There are also example C, C++, and Fortran builds in the `examples/`
+directory. You can build and run them all by running `make test`.
 
 ## Basics
 

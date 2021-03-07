@@ -1,7 +1,7 @@
-// Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
-// at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
-// busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
-// See ../../Copyright for additional notices.
+// Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+// IREP Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: MIT
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,7 +75,7 @@ double LuaCallback::Evaluate(const std::vector<double> &x) {
 int LuaCallback::Evaluate(std::vector<double> &v, const std::vector<double> &x)
 {
   int actual_nret = nret;
-  
+
   if (d.fref == LUA_NOREF) {
     // In the LUA_NOREF case, nret always has the actual length of d.data.
     // (Even if nret was originally specified as -1 in the wkt file.)
