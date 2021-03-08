@@ -1,0 +1,8 @@
+/ir_generate.h
+/ir_extern.f
+/ir_std.f
+*.o
+*.mod
+/libIR.a
+*~
+*.swp

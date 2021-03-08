@@ -1,157 +1,160 @@
-# QUICK START
+# IREP
 
-    Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
-    at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
-    busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
-    See ./Copyright for additional notices.
+[![Documentation Status](https://readthedocs.org/projects/irep/badge/?version=latest)](https://irep.readthedocs.io/en/latest/?badge=latest)
 
-A quick way to see what is happening is to run the C pre-processor by hand:
+IREP is a tool that enables mixed-language simulation codes to use a
+common, Lua-based format for their input decks. Essentially, the input
+format is a set of [tables](https://www.lua.org/pil/2.5.html) -- Lua's
+one (and only?) data structure. IREP is an *intermediate representation*
+that is used to generate plain-old-data (POD) structures in C, C++,
+Fortran, and Lua.
 
-    gcc -E -DIREP_LANG_C       wkt_material.h | more
-    gcc -E -DIREP_LANG_FORTRAN wkt_material.h | more
-    gcc -E -DIREP_LANG_LUA     wkt_material.h | more
-    gcc -E -DIREP_GENERATE     wkt_material.h | more
-    ./etc/ir2l wkt_material.h | more
+## Documentation
 
-In other words, the wkt_* files produce output that can be read from
-C/C++, Fortran, or by a script (ir2rst, in marbl) to produce RST
-documentation (case 3), or to produce code for wrapping the structures
-themselves (case 4, etc/ir_generate).  The output is similar in meaning,
-although not necessarily identical, in each language.  (Ir2l is a Lua
-script that reassembles the pieces of a table into a nested structure
-for display.  For now, it is a toy.)
+There are some high-level docs here to get you started, but you can find
+more in the [full IREP Documentation](https://irep.readthedocs.io/).
 
-The Intermediate Representation (IR) is a tool for constructing a set
-of C/C++ and Fortran data structures, and a tool for reading Lua tables
-into those structures.  It is built around the observation that the
-textual representation of Lua table elements can frequently be mapped
-directly into a C/C++ struct, or a Fortran derived type.  Suppose a Lua
-table constructor is given as follows:
+## Installation
 
-    t1 = {
-      t2 = {
-        x = 42,
-      }
-    }
+To build IREP, run `make` in the root directory. This will create
+`libIR.a`.  IREP does not (yet) have a proper installation target.
 
-With appropriate prior definitions, we could alternatively write:
+## Building with IREP
 
-    t1.t2.x = 42 -- Lua
-    t1.t2.x = 42 // C/C++
-    t1%t2%x = 42  ! Fortran
+IREP has integration for both CMake and gmake-based builds. You can find
+more about how to intgrate IREP into your project here:
 
-The fundamental operation of the IR reader is to construct text of
-the second form above, and pass it to an interpreter which executes an
-assignment statement in the compiled languages.  This particular instance
-of the IR is designed to support combined input for the Blast and Miranda
-codes.  See etc/doc/irep.pdf for additional information about the system.
+* [IREP Build Docs](https://irep.readthedocs.io/en/latest/build.html) on ReadTheDocs.
+* [IREP Examples](https://github.com/LLNL/irep/tree/master/examples) in this repository.
 
+You can build and run the examples by running running `make test` in the
+root of this repository.
 
-## L2IR and IR2L (See etc/ directory.)
+## Basics
 
-L2ir is a Lua script that takes a Lua table as input, and produces the
-declarations that represent it as IR macros.  Ir2l does the opposite: It
-turns a set of IR macros back into a nested Lua table, and displays it.
-These scripts are mostly a proof of principle for now.  They have many
-gaps and bugs.  But they serve to demonstrate that there is indeed a
-rough isomorphism between Lua tables and C/C++ or Fortran structures.
+To use IREP, you can write a header, like this one for defining a
+very simple structured mesh. Let's call it `wkt_mesh.h`:
 
+```c
+#ifndef wkt_mesh_h
+#define wkt_mesh_h
+#include "ir_start.h"
 
-## TYPE NAME CONVENTION
+Beg_struct(irt_box)
+  ir_int(nx, 1)        Doc(( Number of grid cells in 1st dimension ))
+  ir_int(ny, 1)        Doc(( Number of grid cells in 2nd dimension ))
+  ir_int(nz, 1)        Doc(( Number of grid cells in 3rd dimension ))
+  ir_dbl(xmin, 0.0)    Doc(( Location of left-most cell face ))
+  ir_dbl(xmax, 1.0)    Doc(( Location of right-most cell face ))
+  ir_dbl(ymin, 0.0)    Doc(( Location of nearest cell face ))
+  ir_dbl(ymax, 1.0)    Doc(( Location of farthest cell face ))
+  ir_dbl(zmin, 0.0)    Doc(( Location of lowest cell face ))
+  ir_dbl(zmax, 1.0)    Doc(( Location of highest cell face ))
+End_struct(irt_box)
 
-I (L. Busby) have adopted the general convention of naming types by
-prepending "irt_" to the name of a given table.  So if "material" is the
-name of a Lua table, the type name of its associated structure in the
-host code (C/C++ or Fortran) will be "irt_material".  This convention
-extends to the subtables.  Materials has a subtable "opacity", which has
-a subtable "server".  Suppose you want to work with the contents of a
-particular "server" table.  The naming convention makes it easy to get
-a reference to any structure in the IR:
+Beg_struct(irt_mesh)
+  ir_str(file, FILENAMESIZE, 'none')  Doc(( Name of mesh ))
+  ir_int(refinement_level, 0)
+  ir_log(amr, false)                  Doc(( Use amr? ))
+  Structure(irt_box,box)
+End_struct(irt_mesh)
 
-    irt_server *my_svr = &material[1].opacity.server;
-    printf("Library: %s\n", strndup(IR_STR(my_svr->library)));
+// Declare the structure
+ir_wkt(irt_mesh, mesh)
 
+#include "ir_end.h"
+#endif  // wkt_mesh_h
+```
 
-## LIMITATIONS, CONSTRAINTS
+In IREP, headers like this are called "Well Known Tables", or "WKTs". WKT
+headers are includable directly into C and C++ code, and you can refer to
+elements of the defined structures like this:
 
-Lua tables can express combinations of data and data types in ways that
-are not easy to represent in C/C++ or Fortran structured data objects.
-The IR itself is shared between C/C++ and Fortran using Fortran's
-ISO_C_BINDING machinery.  This is not generally an issue for integer,
-double, and logical variables, but it does affect the representation
-of character strings.  There are some additional limitations imposed
-by the Fortran namelist statement, and limitations in how well actual
-compilers support all the features.  Assignments are effectively parsed
-according to Fortran rules.  The major difference for C/C++ (and Lua)
-programmers to recall is that Fortran identifiers are case-insensitive.
+```c
+#include "wkt_mesh.h"
 
+void do_something() {
+    double xrange = mesh.box.xmax - mesh.xmin;
+    double yrange = mesh.box.ymax - mesh.ymin;
+    double zrange = mesh.box.zmax - mesh.zmin;
+}
+```
 
-## STATIC DECLARATION
+IREP can also be used to generate Fortran modules and Lua code for WKTs,
+and you can refer to their elements in a similarly direct way in those
+languages, e.g.:
 
-The IR is statically declared, so the size of all array types is given
-and fixed at compile time.
+```
+mesh.box.xmax  // C, C++
+mesh.box.xmax  -- Lua C
+mesh.box.xmax  ! Fortran
+```
 
+## Using IREP for input decks
 
-## STRINGS
+IREP's main use is to allow multi-language (usually C, C++, and Fortran)
+integrated codes to read Lua input files ("input decks" for those of use
+who've been in the simulation field for a while). With the `wkt_mesh.h`
+we've seen so far, we could write an input file like this:
 
-Character strings are stored in the IR as blank-delimited arrays, one
-character per array element.  String vectors are stored as two-dimensional
-arrays of characters.  Strings are NULL delimited.  String length is
-currently limited to 512 characters.  It is usually best to access
-character strings using one of the convenience functions provided.
-If table "t" contains a scalar string "ss" and a vector of strings "vs":
+```lua
+mesh = {
+   file = 'my_mesh',
+   refinement_level = 1,
+   amr = true,
+   box = {
+      nx = 100,
+      ny = 100,
+      nz = 100,
+   },
+}
+```
 
-    // C++
-    std::string my_ss(IR_STR(t.ss));    // Access scalar string
-    std::string my_vs(IR_STR(t.vs[0])); // First element of vector string
+Note that the `xmin`, `xmax`, `ymin`, `ymax`, `zmin`, and `zmax` fields
+in `box` are not defined in the input, but they will take on the default
+values from the `wkt_mesh.h` header.
 
-    ! Fortran
-    character(len=64) :: my_ss, my_vs
-    my_ss = trim(ir_fstr(t%ss))          ! Access scalar string
-    my_vs = trim(ir_fstr(t%vs(:,1)))     ! First element of vector string
+If you want to read this input file from `C`, you could write some code
+like this:
 
-IR_STR and ir_fstr basically depend on "sizeof", or its Fortran
-equivalent.  So they can be used (only) with operands for which sizeof
-will return a sensible value.  Note that default values can be given
-only for scalar strings in the IR header files.
+```c
+#include "ir_extern.h"
+#include "wkt_mesh.h"
+#include "lua.h"
 
+int main(int argc, char **argv) {
+    // set up lua and load some lua code
+    lua_State *L = luaL_newstate();
+    luaL_openlibs(L);
+    luaL_loadfile(L, "mesh_example.lua");
 
-## COMPILERS
+    ir_read(L, "mesh");
+    printf("mesh.box.xmax = %d\n", mesh.box.xmax);
+    printf("mesh.box.ymax = %d\n", mesh.box.ymax);
+    printf("mesh.box.zmax = %d\n", mesh.box.zmax);
+```
 
-Gfortran received a critical patch at version 4.7.4, that allowed
-it to properly read derived type components in namelist statements.
-That version or later is necessary for the IR to function correctly.
-Portland Group compilers 14.7 and 15.1 were tested, and appear to
-function correctly.  IBM bgxlf and bgxlc, version 14.1, were tested,
-and appear correct.  Intel ifort 14.0 was tested, and appears to give
-correct results.
+This sets up an embedded Lua interpreter, loads the Lua input file, and
+then reads WKT values out of the native Lua tables and into a global
+`mesh` structure that can be accessed from `C`.
 
+## Authors
 
-## CALLBACK FUNCTIONS
+IREP was created by Lee Busby, busby1@llnl.gov.
 
-The IREP lua_cb_data struct has an integer component "fref", which
-nominally contains a Lua reference to the associated Lua callback
-function.  We overload the meaning of the possible fref values to cover
-several cases of interest:
+Thanks also to `irep`'s
+[contributors](https://github.com/LLNL/irep/graphs/contributors)!.
 
-    Value of fref     Meaning
-    ---------------------------------------------------------------------
-    LUA_REFNIL        No entry was in the Lua input.
-    LUA_NOREF         Lua input is a constant function, number or vector.
-    <something else>  Lua input is a real Lua function
+## License
 
-Fref is statically initialized to LUA_REFNIL.  If no actual
-Lua input for the given function name is found, this will therefore be
-the value of fref.
+IREP is distributed under the terms of the MIT license. Copyrights in the
+IREP project are retained by contributors. No copyright assignment is
+required to contribute to IREP. All new contributions must be made under
+the MIT license.
 
-If an input entry is found, we check the type.  If it is a number,
-the value of fref is set to LUA_NOREF, and the number is stored in
-the structure's "const_val" component.  If the entry is instead a Lua
-function, we put the function in the Lua registry and store a reference
-to it in fref.
+See [LICENSE](https://github.com/LLNL/irep/blob/master/LICENSE) and
+[NOTICE](https://github.com/LLNL/irep/blob/master/NOTICE) for details.
 
-In particular, we can use the value of fref to infer whether or not
-any number or function was read:
+SPDX-License-Identifier: MIT
 
-    fref == LUA_REFNIL ==> No entry of any kind was available;
-    fref != LUA_REFNIL ==> Some entry (number or function) was read.
+LLNL-CODE-702338

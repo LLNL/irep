@@ -1,7 +1,7 @@
-// Copyright (c) 2016, Lawrence Livermore National Security, LLC. Produced
-// at the Lawrence Livermore National Laboratory.  Written by Lee Busby,
-// busby1@llnl.gov. LLNL-CODE-702338. All rights reserved.
-// See ./Copyright for additional notices.
+// Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+// IREP Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: MIT
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -21,15 +21,12 @@ extern "C" {
 #include "lualib.h"
 #include "lauxlib.h"
 
+#include "ir_index.h"
+#include "ir_std.h"
+
 // BSZ is the internal buffer size for strings typically containing the
 // name of Lua table elements such as "table1.table2[123].foo.bar".
 #define BSZ 2048
-
-// Q, str, O, S are used in ir_generate.h.
-#define Q(s) str(s)
-#define str(x) #x
-#define O(a,b) offsetof(a,b)
-#define S(a) sizeof(a)
 
 // Set irep_debug=1 in the environment, to see elements visited during ir_read.
 static int irep_debug = -1;
@@ -55,30 +52,9 @@ static void Dbg_print(const char *fmt, ...)
 Ir_error("Type mismatch: %s (%s): Expected: %s",lrep,s_typ[ltyp],s_typ[ityp])
 
 // Type specifiers (Typ), and their string equivalents (s_typ).
-enum Typ { T_int, T_dbl, T_log, T_str, T_cbk, T_tbl, T_ref, T_ptr };
+
 static const char *s_typ[] = { "integer", "double", "logical", "string",
   "callback", "table", "reference", "pointer", "new_callback" };
-
-// Descriptor for an IREP variable.
-typedef struct {
-  const char *name; // Name of the variable.
-  int ti;           // If variable is itself a struct, index into ir_ta, or -1.
-  size_t sz;        // Size of (one element of) the variable.
-  size_t off;       // Offset of the variable in its enclosing struct.
-  int len;          // Max length for string variable; include trailing null.
-  int flb;          // Fortran lower bound, if array.
-  int fub;          // Fortran upper bound, if array.  Zero for scalar.
-  int typ;          // Type code for the variable.  See Typ above.
-} ir_element;
-
-// Descriptor for an IREP well known table.
-typedef struct {
-  void *p;          // Address of the table instance.
-  ir_element e;     // As above.
-} ir_wkt_desc;
-
-// Ir_generate.h basically contains arrays of the descriptors as above.
-#include "ir_generate.h"
 
 // Find index of "name" in element table tp.
 static int find_element(const char *name, ir_element *tp) {
@@ -91,8 +67,9 @@ static int find_element(const char *name, ir_element *tp) {
 // Find the entry for the well-known table "name".
 static int find_wkt(const char *name) {
   int i;
-  for (i=0;i<sizeof(ir_wktt)/sizeof(ir_wktt[0]);i++)
+  for (i=0; i < ir_wktt_size; i++) {
     if (strcmp(name, ir_wktt[i].e.name) == 0) return i;
+  }
   return -1;
 }
 
@@ -333,7 +310,7 @@ static int iir_read(lua_State *L,char *lrep,char *lp,void *bp,ir_element *ep) {
 
 static void newtable_byname(lua_State *L, const char *name) {
                             // TOS  (Lua stack initially has table T.)
-                            //  T 
+                            //  T
   lua_newtable(L);          //  {}  T
   lua_pushvalue(L,-1);      //  {}  {}  T
   lua_setfield(L,-3,name);  //  {}  T         (Set T[name] = {}, pop 1 value.)
@@ -342,7 +319,7 @@ static void newtable_byname(lua_State *L, const char *name) {
 #define lua_swap(L) lua_insert(L,-2)
 static void newtable_byindex(lua_State *L, int k) {
                          // TOS  (Lua stack initially has table T.)
-                         //  T 
+                         //  T
   lua_newtable(L);       //  {}  T
   lua_pushvalue(L,-1);   //  {}  {}  T
   lua_pushinteger(L,k);  //  k   {}  {}  T

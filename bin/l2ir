@@ -1,0 +1,91 @@
+#!/usr/bin/env lua
+-- Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+-- IREP Project Developers. See the top-level LICENSE file for details.
+--
+-- SPDX-License-Identifier: MIT
+
+-- Convert lua tables into IR macros.
+--
+-- For scalars, the type and value of the assigned value dictates the
+-- type and default value of the IR macro output.
+--   a = 3    -- is an integer named "a" with default value "3"
+--   b = 3.14 -- is a double, with default "3.14".
+--
+-- For vectors, we expect the type of v[1] to be the type of the vector,
+-- v[2] to be the number of elements desired, and v[3] the default value.
+--   aa = { 1, 10, 3 } -- is integer, with 10 elements, default == 3.
+--
+-- Note that vector strings don't currently accept default values.  For
+-- string vectors, v[1] is type, v[2] is the length, v[3] is nelems.
+--
+-- Functions need to be just functions: f = function(x) return 1 end.
+-- Remember that scalar string lengths default to 32.
+
+
+if #arg ~= 2 then
+  print("Usage: l2ir foo.lua tablename")
+  return
+end
+
+local slen = 32 -- default string length
+local tlist = {}
+
+local function digest(pname, tname, t, lev)
+  for k,v in pairs(t) do
+    if type(v) == "table" then
+      if #v == 0 then
+        table.insert(tlist,{pname=pname,tname=k,val=v,lev=lev+1})
+	digest(k,k,v,lev+1)
+      end
+    end
+  end
+end
+
+local function generate(t)
+  for k,v in pairs(t.val) do
+    if type(v) == "table" then
+      if #v == 0 then
+        io.write(" Structure(irt_", k, ",", k, ")\n")
+      else
+        if type(v[1]) == "string" then
+          io.write(" Vir_str(",k,",",v[2],",",v[3],")\n")
+        elseif type(v[1]) == "number" then
+          if v[1]%1 ~= 0 then io.write(" Vir_dbl(",k,",",v[2],",",v[3],")\n")
+          else                io.write(" Vir_int(",k,",",v[2],",",v[3],")\n")
+          end
+        elseif type(v[1]) == "boolean" then
+          if v[3] then io.write(" Vir_log(",k,",",v[2],",","true)\n")
+          else         io.write(" Vir_log(",k,",",v[2],",","false)\n")
+          end
+        else
+          print("ERROR: ", k, v)
+        end
+      end
+    elseif type(v) == "string" then
+      io.write("  ir_str(",k,",",slen,",",'"',v,'"',")\n")
+    elseif type(v) == "number" then
+      if v%1 ~= 0 then io.write("  ir_dbl(",k,",",v,")\n")
+      else             io.write("  ir_int(",k,",",v,")\n")
+      end
+    elseif type(v) == "boolean" then
+      if v then io.write("  ir_log(",k,",true)\n")
+      else      io.write("  ir_log(",k,",false)\n")
+      end
+    elseif type(v) == "function" then
+      io.write(" Callback(",k,")\n")
+    else
+      print("ERROR: ", k, v)
+    end
+  end
+end
+
+dofile(arg[1])
+table.insert(tlist, {pname="_G", tname=arg[2], val=_G[arg[2]],lev=0})
+digest(arg[2], arg[2], _G[arg[2]], 0)
+
+table.sort(tlist, function(a,b) return a.lev > b.lev end)
+for k,v in ipairs(tlist) do
+  io.write("Beg_struct(irt_", v.tname, ")\n")
+  generate(v)
+  io.write("End_struct(irt_", v.tname, ")\n\n")
+end

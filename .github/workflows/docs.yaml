@@ -1,0 +1,29 @@
+name: documentation
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Install System packages
+      run: |
+        sudo apt-get -yqq update
+        sudo apt-get install -yqq graphviz lua5.1
+    - name: Install Python packages
+      run: |
+        pip install --upgrade pip six setuptools
+        pip install --upgrade -r docs/requirements.txt
+    - name: Build documentation
+      run: |
+        make -C docs

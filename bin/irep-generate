@@ -1,0 +1,1052 @@
+#!/usr/bin/env lua
+-- Copyright 2016-2021 Lawrence Livermore National Security, LLC and other
+-- IREP Project Developers. See the top-level LICENSE file for details.
+--
+-- SPDX-License-Identifier: MIT
+
+-- Print usage description and exit with exitcode (or 1 if not provided)
+local function usage(exitcode)
+   print("irep-generate [-h] [--mode PART] HEADERS")
+   print()
+   print("This script generates source code for IREP well-known-table (WKT)")
+   print("libraries.")
+   print()
+   print("Generated code is printed to standard out.")
+   print()
+   print("Positional Arguments:")
+   print("  HEADERS            wkt_*.h files from which to generate code, e.g.:")
+   print("                       wkt_geometry.h wkt_physics.h ...")
+   print()
+   print("Generation options")
+   print("  --mode index       generate only index (default)")
+   print("  --mode fortran     generate fortran module from a single wkt header")
+   print("  --mode lua         generate loadable, nested lua tables")
+   print("  --mode rst         generate restructured text (.rst) documentation")
+   print()
+   print("  --module-name      name for generated module (fortran mode only,")
+   print("                     inferred from header name by default)")
+   print()
+   print("Documentation options (for use with --mode rst)")
+   print("  --doc-dir DIR      documentation directory where we look for")
+   print("                     details/intros for WKTs (default: .)")
+   print()
+   print("Environment variables:")
+   print("  CPP                C preprocessor to use (default gcc -E)")
+   print("  CPPFLAGS           flags for the C preprocessor")
+   print()
+   print("Help:")
+   print("  -h, --help         display this message")
+
+   os.exit(exitcode or 1)
+end
+
+
+-- Lua doesn't have a split function, so use one from
+-- http://lua-users.org/wiki/SplitJoin
+function split(str, delim, maxNb)
+   -- Eliminate bad cases...
+   if string.find(str, delim) == nil then
+      return { str }
+   end
+   if maxNb == nil or maxNb < 1 then
+      maxNb = 0    -- No limit
+   end
+   local result = {}
+   local pat = "(.-)" .. delim .. "()"
+   local nb = 0
+   local lastPos
+   for part, pos in string.gfind(str, pat) do
+      nb = nb + 1
+      result[nb] = part
+      lastPos = pos
+      if nb == maxNb then
+         break
+      end
+   end
+   -- Handle the last field
+   if nb ~= maxNb then
+      result[nb + 1] = string.sub(str, lastPos)
+   end
+   return result
+end
+
+
+-- Trim whitespace from either side of a string
+local function trim(str)
+   return str:match("^%s*(.-)%s*$")
+end
+
+
+-- Lua doesn't have a builtin way to test if a file exists
+function file_exists(name)
+   local f=io.open(name,"r")
+   if f~=nil then
+      io.close(f)
+      return true
+   end
+   return false
+end
+
+
+-- IREP type definitions
+local tmap = {
+  T_int = "int",
+  T_dbl = "double",
+  T_log = "_Bool",
+  T_str = "char",
+  T_ref = "int",
+  T_ptr = "void*",
+  T_cbk = "lua_cb_data",
+}
+
+-- Which parts of the IREP should be in the output:
+--  'index':
+--  'fortran':
+local mode_values = {
+   ["index"] = true,
+   ["fortran"] = true,
+   ["lua"] = true,
+   ["rst"] = true,
+}
+
+-- generate index by default
+local mode = "index"
+
+-- names of WKT headers for which we should generate code
+local wkt_headers = {}
+
+-- fortran module name (for fortran mode)
+local fortran_module_name
+
+-- CPP and CPPFLAGS come from the environment
+local cpp = os.getenv("CPP") or "gcc -E"
+local cppflags = os.getenv("CPPFLAGS") or ""
+
+-- location to search for additional rst files for docs
+local doc_dir = "."
+
+
+-- sort keys of a table and return them as an integer-indexed table
+local function sorted_keys(tab)
+   keys = {}
+   for k, _ in pairs(tab) do
+      table.insert(keys, k)
+   end
+   table.sort(keys)
+   return keys
+end
+
+
+-- Parse arguments from the command line, per the description in usage()
+local function parse_args()
+   -- no args just prints usage
+   if #arg == 0 then
+      usage()
+   end
+
+   -- parse any command line options
+   local i = 1
+   while i <= #arg and arg[i]:match("^-") do
+      if arg[i] == "-h" or arg[i] == "--help" then
+         usage(0)
+      elseif arg[i] == "--mode" then
+         i = i + 1
+         if not mode_values[arg[i]] then
+            print("bad option for --mode: '" .. arg[i] .. "'")
+            values = table.concat(sorted_keys(mode_values), "', '")
+            print(string.format("valid values are: '%s'", values))
+            os.exit(1)
+         end
+         mode = arg[i]
+      elseif arg[i] == "--module-name" then
+         i = i + 1
+         fortran_module_name = arg[i]
+      elseif arg[i] == "--doc-dir" then
+         i = i + 1
+         doc_dir = arg[i]
+      else
+         print("invalid option: '" .. arg[i] .. "'")
+         os.exit(1)
+      end
+      i = i + 1
+   end
+
+   -- user must provide some headers or we'll just error out here
+   if i > #arg then
+      print("error: no headers provided")
+      os.exit(1)
+   end
+
+   -- accumulate header names in wkt_headers
+   while i <= #arg do
+      local header = arg[i]
+
+      -- header needs to end in .h, as C preprocessors are picky
+      if not header:match("%.h$") then
+         print("error: bad header name: '" .. header .. "'")
+         print("must end with '.h'")
+         os.exit(1)
+      end
+      table.insert(wkt_headers, header)
+      i = i + 1
+   end
+
+   -- sort list of headers after accumulating them all
+   table.sort(wkt_headers)
+end
+
+
+-- execute a command and fail if it doesn't succeed.
+-- otherwise, return a open file handle to its output,
+-- and the name of the output file.
+--
+-- caller must close the stream and remove the file.
+--
+-- we can't use something simpler like popen in lua 5.1 unless we want to
+-- throw out the error code. -- 5.2 has better error reporting but we
+-- don't require a lua that new.
+function execute_command(command)
+   local tmpfile = os.tmpname() .. ".out"
+   local exit = os.execute(command .. ' > ' .. tmpfile)
+   if exit ~= 0 then
+      print("Command failed: '" .. command .. "'")
+      os.exit(1)
+   end
+   return io.open(tmpfile, "r"), tmpfile
+end
+
+
+-- path to dir containing this lua script
+function script_dir()
+   local str = debug.getinfo(2, "S").source:sub(2)
+   return str:match("(.*/)")
+end
+
+
+-- Takes one wkt_*.h and generates the corresponding fortran code
+local function generate_fortran()
+   if #wkt_headers ~= 1 then
+      print("error: `irep-generate --mode fortran` takes exactly one header")
+      os.exit(1)
+   end
+
+   -- infer module name from header if it's not provided
+   local header = wkt_headers[1]
+   if not fortran_module_name then
+      fortran_module_name = header:gsub(".h$", ""):gsub(".*/", "")
+   end
+
+   -- arguments for the preprocessor
+   local cpp_args = {
+      cpp,
+      "-DIR_WKT_NAME=" .. fortran_module_name,
+      "-DIREP_LANG_FORTRAN",
+      cppflags,
+      "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I.",
+      header,
+   }
+   local cpp_cmd = table.concat(cpp_args, " ")
+   local p, tmpfile = execute_command(cpp_cmd)
+
+   -- read through lines of input and filter out preprocessor artifacts
+   for line in p:lines() do
+      line = line:gsub("%s+%+/%+/", " //")
+      line = line:gsub(' *## *', '')
+      if not (line:match('^#') or line:match("^%s*$")) then
+         print(line)
+      end
+   end
+   p:close()
+   os.remove(tmpfile)
+   os.exit(0)
+end
+
+
+local function generate_preamble()
+   local c = (mode == "fortran") and "!" or "//"
+   print(c .. " This file was generated by irep-generate. Do not modify.")
+   print(c .. " For more on IREP, see https://github.com/LLNL/irep.")
+   print(c .. "")
+   print(c .. " Mode: " .. mode)
+   print(c .. "")
+   print(c .. " Environment:")
+   print(c .. "   CPP:      '" .. cpp .. "'")
+   print(c .. "   CPPFLAGS: '" .. cppflags .. "'")
+   print(c .. "")
+   print(c .. "")
+end
+
+
+-- generate includes for input headers at top of output
+local function generate_includes(ostream)
+   for _, header in ipairs(wkt_headers) do
+      -- we want the #include to *just* be the filename, not full path
+      local filename = header:match("/([^/]+)$") or header
+      ostream:write(string.format("#include \"%s\"\n", filename))
+   end
+   ostream:write("\n")
+end
+
+
+-- print out pairs in the sorted order of their values
+local function pairsbyvalues(t,f)
+  local rev, a = {}, {}
+  for k,v in pairs(t) do rev[v] = k; a[#a + 1] = v end
+  table.sort(a,f)
+  local i = 0
+  return function()
+    i=i+1
+    return a[i],rev[a[i]]
+  end
+end
+
+-- Stbl is an associative string table: stbl.num_comp = "s0123", etc.
+-- It's not really necessary, but makes the output look neater.  String
+-- numbers count up from 0.
+local scnt, stbl = -1, {}
+
+
+-- convenience function for adding to the string table
+local function add2stbl(s)
+  if not stbl[s] then
+    scnt = scnt + 1
+    stbl[s] = string.format("s%04d",scnt)
+  end
+end
+
+
+-- These variables hold table state while we parse the input.
+-- tbl_list is a 0-based array.  Each element corresponds to one of the
+-- structs in a wkt_*.h file (See the IREP "Beg_struct" macro.)  Each element
+-- is itself a table, containing most or all the fields (depending on the
+-- element type) of the "ir_element" struct in irep.c.
+local tcnt, tbl_list = -1, {}
+
+-- wkt_list is similar to tbl_list.  It records similar information for
+-- each well-known-table.  Each entry in wkt_list effectively contains an
+-- ir_element, plus the base address of the well-known-table instance.
+local wcnt, wkt_list = -1, {}
+
+-- rev_ta is an associative table of type names, such as "irt_method",
+-- with that name's index in tbl_list.
+local rev_ta = {}
+
+-- Typename is an array parallel to tbl_list, that lists the structure
+-- name for each index.
+local typename = {}
+
+
+-- run the C preprocessor over all input WKT heders and collect the
+-- things to be generated in the various tables above
+local function process_headers()
+   -- create a temporary file with WKT #includes
+   -- compilers are picky about names, so we append .h to this name
+   tmpfile_name = os.tmpname() .. ".h"
+   tmpfile = io.open(tmpfile_name, "w")
+   generate_includes(tmpfile)
+   tmpfile:close()
+
+   -- run the preprocessor on the WKT includes and read its output
+   local cpp_args = {
+      cpp,
+      "-DIREP_GENERATE",
+      cppflags,
+      "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I.",
+      tmpfile_name
+   }
+   local cpp_cmd = table.concat(cpp_args, " ")
+   local p, outfile_name = execute_command(cpp_cmd)
+
+   local ct -- type name of the struct being declared, e.g., "irt_sources"
+
+   -- loop invokes this function for each line of input
+   local function handle_line(line)
+      local f1,f2,f3,f4 = line:match("%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
+      if not f1 then error("Bad input: " .. line) end
+
+      add2stbl(f2)
+      if f1=="bst" then -- Begin structure declaration.
+         if ct then error("ct should be nil at " .. f2) end
+         assert(not rev_ta[f2], "Repeated table: " .. f2)
+         ct = f2
+         tcnt = tcnt + 1
+         tbl_list[tcnt] = {}
+         typename[tcnt] = f2
+         rev_ta[f2] = tcnt
+
+      elseif f1=="est" then -- End structure declaration.
+         assert(ct == f2, "Expected equality: " .. ct .."==" .. f2)
+         ct = nil
+
+      elseif f1:match("T_[dilprs]") then -- Leaf declaration (POD or pointer).
+         tbl_list[tcnt][f2] = {
+            typ = f1,
+            len = tonumber(f3),
+            flb = 1,
+            fub = tonumber(f4),
+         }
+
+      elseif f1=="T_cbk" then -- Leaf declaration (callback function.)
+         local nprm,nret = f3:match("([+-]?%d+):([+-]?%d+)")
+         nprm,nret = tonumber(nprm),tonumber(nret)
+         -- Strictly speaking, the lower limit for nprm,nret is -9.  However,
+         -- nprm<-1 or nret<-1 is semantically incorrect at this time.
+         if nprm < -1 or nprm >    1014 then error("Bad nprm: " .. nprm) end
+         if nret < -1 or nret > 2097142 then error("Bad nret: " .. nret) end
+         local len = nprm+9 + (nret+9)*1024
+         tbl_list[tcnt][f2] = {
+            typ = f1,
+            len = len,
+            flb = 1,
+            fub = tonumber(f4),
+         }
+
+      elseif f1=="T_tbl" then -- Node declaration.
+         local flb,fub = f4:match("([+-]?%d+):([+-]?%d+)")
+         tbl_list[tcnt][f2] = {
+            typ = f1,
+            tname = f3,
+            len = 0,
+            flb = tonumber(flb),
+            fub = tonumber(fub),
+         }
+         add2stbl(f3)
+
+      elseif f1=="wkt" then -- WKT definition.
+         assert(rev_ta[f3], "No type declaration for: " .. f3)
+         local flb,fub = f4:match("([+-]?%d+):([+-]?%d+)")
+         wcnt = wcnt + 1
+         wkt_list[wcnt] = {
+            name = f2,
+            tname = f3,
+            flb = tonumber(flb),
+            fub = tonumber(fub),
+            ti=rev_ta[f3],
+         }
+         add2stbl(f3)
+
+      else
+         error("Bad input: " .. line)
+      end
+   end
+
+   -- main loop over input lines. The + in gmatch skips blank lines
+   for line in string.gmatch(p:read("*all"), '[^\n]+') do
+      -- match() here skips preprocessor directives like line numbers
+      if not line:match("^#") then
+         handle_line(line)
+      end
+   end
+
+   -- make sure every struct was opened and closed
+   if ct then
+      error("(At end) ct should be nil: " .. ct)
+   end
+
+   -- close preprocessor pipe and temporary input file
+   p:close()
+   os.remove(tmpfile_name)
+   os.remove(outfile_name)
+end
+
+
+local function generate_string_table()
+   print("// Part 1: The string table.")
+   for k,v in pairsbyvalues(stbl) do
+      print("#define " .. k .. " " .. v)
+   end
+   print("")
+end
+
+
+local function generate_element_tables()
+   print("// Part 2: The element tables.")
+   local f1 = function(ti, tname, t)
+      print("static ir_element " .. tname .. "[] = { // " .. typename[ti])
+      for k,v in pairs(t) do
+         local idesc = rev_ta[v.tname] or -1
+         local szo = string.format("S(%s)", stbl[v.tname] or stbl[tmap[v.typ]])
+         if v.typ == "T_str" and v.fub > 0 then -- An array of strings.
+            -- Stride == Fortran "len" of item.
+            szo = string.format("%8d", v.len)
+         end
+         print(string.format(
+                  "  { Q(%s),%3d, %s, O(%s,%s), %8d,%3d,%3d, %s },",
+                  stbl[k], idesc, szo, stbl[typename[ti]], stbl[k],
+                  v.len, v.flb, v.fub, v.typ
+         ))
+      end
+      print("  { 0 }\n};\n")
+   end
+
+   for i=0,tcnt do
+      f1(i, string.format("ir_tbl%03d", i), tbl_list[i])
+   end
+end
+
+
+local function generate_table_pointers()
+   print("// Part 3: A list of pointers to the ir_element tables.")
+   print("ir_element *ir_ta[] = {")
+   for i=0,tcnt do
+      print(string.format("  ir_tbl%03d, // %s",i,typename[i]))
+   end
+   print("};\n")
+end
+
+
+local function generate_wkt_table()
+   print("// Part 4: List the well-known tables.")
+   print("ir_wkt_desc ir_wktt[] = {")
+   for i=0, wcnt do
+      local t = wkt_list[i]
+      local nm  = stbl[t.name]
+      local tnm = stbl[t.tname]
+      print(string.format(
+               "  { &%s, {Q(%s),%3d,S(%s),0,0,%3d,%3d,T_tbl }}, // %s",
+               nm,nm,t.ti,tnm,t.flb,t.fub,t.name
+      ))
+   end
+   print("};")
+   print()
+   print("// Total number of well-known tables in this index");
+   print(string.format("size_t ir_wktt_size = %d;", wcnt + 1))
+end
+
+
+---
+--- Functions for generating lua code.
+---
+
+-- create a temporary header file with some modifications to preserve
+-- newlines. Specifically, escape newlines and spaces in docs so we can
+-- recover them later.
+--
+-- returns the temporary header name
+local function mark_up_whitespace(header)
+   local tmpfile_name = os.tmpname() .. ".h"
+   local f = assert(io.open(header, "rb"))
+
+   local tmpfile = assert(io.open(tmpfile_name, "w"))
+
+   in_doc = false
+   for line in f:lines() do
+      if line:match("Doc%(%(") then
+         in_doc = true
+      end
+
+      if line:match("%)%)") then
+         in_doc = false
+      end
+
+      if in_doc then
+         -- escape newlines and spaces in Doc(()) sections
+         if not line:match("Doc%(%(") then
+            line = line:gsub(" ", "\\ ")
+         end
+         tmpfile:write(line)
+         tmpfile:write("\\n")
+      else
+         tmpfile:write(line)
+         tmpfile:write("\n")
+      end
+   end
+   f:close()
+   tmpfile:close()
+
+   return tmpfile_name
+end
+
+
+-- Helper for generate_lua -- filters C preprocessor output
+-- into something lua can load before assembling final tables.
+local function _wkt_to_loadable_lua(header)
+   local tmp_header = mark_up_whitespace(header)
+
+   -- run the preprocessor on the WKT header and generate lua
+   local cpp_args = {
+      cpp,
+      "-DIREP_LANG_LUA",
+      "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I.",
+      cppflags,
+      tmp_header
+   }
+   local cpp_cmd = table.concat(cpp_args, " ")
+   local p, outfile_name = execute_command(cpp_cmd)
+
+   local text = ''
+   for line in p:lines() do
+      if line:match("^%s*[^%s]+%s*=%s*[^%s]") or line:match("^}") then
+         -- just print assignments and close braces
+         text = text .. line .. "\n"
+
+      elseif line:find("VDEFINE") then
+         -- generate a table assignment from VDEFINE
+         vname, val = line:match("VDEFINE ([%w_]+) ([%w_]+)")
+         text = text .. string.format("%s={[1]=%s}\n", vname, val)
+
+      elseif line:find("@@@") then
+         -- convert lines with @@@ to strings for processing later
+         -- " is converted to ' for nesting in a double-quoted string
+         name, rest = line:match("([%w_]+) @@@ (.*)$")
+         rest = rest:gsub("\"", "'")
+         text = text .. string.format(' %s = "%s",\n', name, rest)
+
+      elseif not (line:match("^%s*$") or line:match("^#")) then
+         -- skip newline and cpp directives, or error
+         text = text .. " [[[[ ERROR ]]]]\n"
+      end
+   end
+
+   p:close()
+   os.remove(outfile_name)
+   os.remove(tmp_header)
+
+   return text
+end
+
+
+--
+-- given a wkt header, build lua tables recursively.
+--
+local function build_lua_tables(header, field, open, close)
+   simple_tables = _wkt_to_loadable_lua(header)
+   assert(loadstring(simple_tables))()
+
+   -- handler functions are no-ops if not provided
+   field = field or function() end
+   open = open or function() end
+   close = close or function() end
+
+   local seen = {}
+   tdump = function (tname, t, lrep, level)
+      open(tname, lrep, level)
+
+      -- sort keys in the table so they print out in alphabetical order
+      local klist = {}
+      for k, v in pairs(t) do
+         table.insert(klist, k)
+      end
+      table.sort(
+         klist,
+         function(a, b)
+            ta, tb = type(t[a]), type(t[b])
+            if ta == tb or (ta ~= "table" and tb ~= "table") then
+               -- if both or neither is a table, compare by name
+               return a:lower() < b:lower()
+            else
+               -- subtables come after all other elements
+               return tb == "table"
+            end
+         end
+      )
+
+      -- iterator over sorted keys and values
+      for i, k in pairs(klist) do
+         local v = t[k]
+         local nlrep
+
+         if type(k) == "string" then
+            nlrep = lrep .. "." .. k
+         else
+            nlrep = lrep .. "[" .. k .. "]"
+         end
+
+         if type(v) == "table" then
+            seen[v] = (seen[v] or 0) + 1
+            -- TODO: why this limit of 6?
+            if seen[v] <= 6 then -- do not recurse (much) on self-reference.
+               tdump(k, v, nlrep, level + 1)
+            end
+         else
+            -- parse raw strings like:
+            --     typ %%% default %%% lo %%% hi %%% docstring
+            local typecode, default, strlen, nelem, doc = unpack(
+               split(v, "%%%%%%"))
+
+            doc = trim(doc or '')
+            doc = doc:match("^%(%s?(.-)%s?%)$") or ''
+
+            local field_tab = {
+               ["tname"]    = tname,
+               ["name"]     = k,
+               ["value"]    = v,
+               ["lrep"]     = lrep,
+               ["nlrep"]    = nlrep,
+               ["typecode"] = trim(typecode),
+               ["default"]  = trim(default),
+               ["strlen"]   = tonumber(trim(strlen)),
+               ["nelem"]    = tonumber(trim(nelem)),
+               ["doc"]      = doc,
+               ["level"]    = level,
+            }
+            field(field_tab)
+         end
+      end
+      close(tname, lrep, level)
+   end
+
+   local top = assert(header:match("wkt_([^%.]*)%.h"))
+   tdump(top, _G[top], top, 0)
+end
+
+
+local function generate_lua()
+   if #wkt_headers ~= 1 then
+      print("error: `irep-generate --mode lua` takes exactly one header")
+      os.exit(1)
+   end
+   local header = wkt_headers[1]
+   local ostream = io.output()
+
+   local function indent(level)
+      return string.rep(" ", level * 2)
+   end
+
+   local function open(tname, lrep, level)
+      -- construct a string to this table. if tname is a number, this is
+      -- one table in a vector.
+      local fmt = (type(tname) == "number") and "%s[%d] = {\n" or "%s%s = {\n"
+      ostream:write(string.format(fmt, indent(level), tname))
+   end
+
+   local function field(f)
+      -- clean up default after splitting
+      default = f.default
+      if default == 'function' then
+         default = 'function() end'
+      end
+
+      -- handle multi-line docs with multi-line --[[ ]] comments
+      doc = f.doc:match("[^%s]+") and ("  --[[ " .. f.doc .. " ]]") or ''
+      ostream:write(
+         string.format(
+            "%s  %s = %s,%s\n",
+            indent(f.level), f.name, default, doc
+         )
+      )
+   end
+
+   -- close out the table
+   local function close(tname, lrep, level)
+      local comma = (level == 0) and '' or ','
+      ostream:write(string.format("%s}%s\n", indent(level), comma))
+   end
+
+   build_lua_tables(header, field, open, close)
+end
+
+---
+--- Functions for generating rst documentation.
+---
+
+local rst_types = {
+   ["sd"] = ":doc:`double <%s/glossary/sdbl>`",
+   ["si"] = ":doc:`integer <%s/glossary/sint>`",
+   ["sb"] = ":doc:`boolean <%s/glossary/slog>`",
+   ["ss"] = ":doc:`string <%s/glossary/sstr>`",
+   ["vd"] = ":doc:`double vector <%s/glossary/vdbl>`",
+   ["vi"] = ":doc:`integer vector <%s/glossary/vint>`",
+   ["vb"] = ":doc:`boolean vector <%s/glossary/vlog>`",
+   ["vs"] = ":doc:`string vector <%s/glossary/vstr>`",
+   ["lf"] = ":doc:`function <%s/glossary/callback>`",
+}
+
+
+local function rst_type(f)
+   if f.typecode == "sd" then
+      return ":ref:`double <irep-double>`"
+   elseif f.typecode == "si" then
+      return ":ref:`integer <irep-integer>`"
+   elseif f.typecode == "sb" then
+      return ":ref:`boolean <irep-boolean>`"
+   elseif f.typecode == "ss" then
+      return string.format(":ref:`string(%d) <irep-string>`", f.strlen)
+   elseif f.typecode == "vd" then
+      return string.format(":ref:`double[%d] <irep-vector-double>`", f.nelem)
+   elseif f.typecode == "vi" then
+      return string.format(":ref:`integer[%d] <irep-vector-integer>`", f.nelem)
+   elseif f.typecode == "vb" then
+      return string.format(":ref:`boolean[%d] <irep-vector-boolean>`", f.nelem)
+   elseif f.typecode == "vs" then
+      return string.format(
+         ":ref:`string(%d)[%d] <irep-vector-string>`", f.strlen, f.nelem)
+   elseif f.typecode == "lf" then
+      return string.format(
+         ":ref:`callback <irep-callback>` /%d |rarr| %d", f.strlen, f.nelem)
+   else
+      error("Bad typecode: " .. f.typecode)
+   end
+end
+
+
+-- generate a list of candidate files to search for "details" on a field
+-- in a WKT.  For a field like material.ceilings.density, the list would
+-- look like:
+--
+--   material/ceilings-density.rst
+--   material/ceilings.rst
+--   material/material.rst
+--
+local function details_file_candidates(nlrep)
+   local candidates = {}
+   local directory, rest = nlrep:match('^([^%.]*)%.?(.*)$')
+   local last = directory
+   table.insert(
+      candidates,
+      doc_dir .. "/" .. directory .. "/" .. directory .. ".rst"
+   )
+
+   local component
+   while rest ~= '' do
+      component, rest = rest:match('^([^%.]*)%.?(.*)$')
+      local sep = (#candidates == 1) and "/" or "-"
+      last = last .. sep .. component
+      table.insert(candidates, 1, doc_dir .. "/" .. last .. ".rst")
+   end
+   return candidates
+end
+
+
+-- Searches for details file associated with a field in a WKT.
+--
+-- First generates the candidates list (see details_file_candidates). The
+-- first file in this list that exists will be returned and used as the
+-- target for a "details" link in the documentation. If no such file
+-- exists, this returns nil.
+local function find_details_file(nlrep)
+   local candidates = details_file_candidates(nlrep)
+   for _, path in pairs(candidates) do
+      if file_exists(path) then
+         return path
+      end
+   end
+   return nil
+end
+
+
+-- legal title underlines for RST
+local rst_title_chars = { "=", "-", '"', "'", "~", "^", "+", "*" }
+
+
+-- build an underline for a level
+local function title_line(level, ostream)
+   ostream:write(string.rep(rst_title_chars[level + 1], 63))
+   ostream:write("\n")
+end
+
+
+-- print out standard sphinx includes for extras in this doc
+local function rst_includes(ostream)
+   ostream:write("\n\n.. include:: <isonum.txt>\n\n")
+   ostream:write(".. |br| raw:: html\n\n")
+   ostream:write("   <br/>\n")
+end
+
+
+-- word-wrap text to a character limit
+function wrap(str, limit, sep, indent, indent1)
+   sep = sep or "\n"
+   indent = indent or ""
+   indent1 = indent1 or indent
+   limit = limit or 72
+   local here = 1-#indent1
+   local function check(sp, st, word, fi)
+      if fi - here > limit then
+         here = st - #indent
+         return sep..indent..word
+      end
+   end
+   return indent1..str:gsub("(%s+)()(%S+)()", check)
+end
+
+
+-- Geneate RST documentation for a wkt file.
+-- This is what --mode rst ends up invoking.
+local function generate_rst_file(header, ostream)
+   local top = assert(header:match("wkt_([^%.]*)%.h"))
+
+   -- Track recently opened tables and when to write headers.
+   -- Note that the way we do this assumes that subtables come
+   -- after other elements. Needs a rework if field order changes.
+   local needs_headers = false
+   local cur_subtable = nil
+
+   local function subtable(top, full_name)
+      ostream:write(string.format("\n.. _%s.subtable.%s:\n", top, full_name))
+      ostream:write(string.format("\nsubtable ``%s``\n", full_name))
+
+      -- write out a title line for the appropriate level
+      local _, count = full_name:gsub("%.", "")
+      title_line((count or 0) + 1, ostream)
+
+      cur_subtable = full_name
+   end
+
+   -- this begins tables and subtables
+   local function open(tname, lrep, level)
+      if level == 0 then
+         needs_headers = true
+         -- top level table: print a large title bar
+         title_line(0, ostream)
+         ostream:write(string.format("The ``%s`` table\n", tname))
+         title_line(0, ostream)
+
+         intro_path = string.format("%s/%s/introduction.rst", doc_dir, tname)
+         if file_exists(intro_path) then
+            ostream:write(string.format("\n.. include:: %s\n\n", intro_path))
+         end
+         rst_includes(ostream)
+
+      elseif not lrep:match("%[%d%]$") then
+         full_name = lrep:gsub("%[%d%]", "")
+         full_name = full_name:match(string.format("^%s%%.(.*)$", top))
+         subtable(top, full_name)
+         needs_headers = true
+      end
+   end
+
+   -- this prints field rows in doc tables
+   local function field(f)
+      -- if we're printing variables from a recently opened table, create
+      -- the list table in rst, including headers
+      if needs_headers then
+         ostream:write("\n.. list-table::\n")
+         ostream:write("   :widths: 15 5 80\n")
+         ostream:write("   :header-rows: 1\n\n")
+         ostream:write()
+         ostream:write("   * - Name / Type\n")
+         ostream:write("     - Default\n")
+         ostream:write("     - Description\n")
+         needs_headers = false
+      end
+
+      local no_array_nlrep = f.nlrep:gsub("%[%d+%]", "")
+      local identifier = no_array_nlrep:match(string.format("^%s%%.(.*)$", top))
+      if cur_subtable then
+         identifier = identifier:match(
+            string.format("^%s%%.(.*)$", cur_subtable)) or identifier
+      end
+
+      -- print link to type-specific help
+      default = (f.default == 'function') and 'no-op' or f.default
+      if string.len(default) > 12 then
+         default = wrap(default, 12, "`` |br| ``")
+      end
+
+      -- wrap docstring, unless it's multi-line, in which case we leave it.
+      local doc = ''
+      if f.doc ~= '' then
+         local n
+         -- ensure multi-line docstrings are properly indented for rst
+         doc, n = f.doc:gsub("\n", "\n        ")
+
+         -- break up and wrap long single-line docstrings
+         if n == 0 then
+            doc = wrap(f.doc, 60, " |br| ")
+         end
+      end
+
+      -- generate details link if there's a file to link to
+      type_details = rst_type(f)
+      details_file = find_details_file(f.nlrep)
+      if details_file then
+         type_details = type_details .. " |br| " .. string.format(
+            ":doc:`(details) <%s>`", details_file:match("^(.*).rst$"))
+      end
+
+
+      ostream:write(string.format("   * - .. _%s:\n\n", no_array_nlrep))
+      ostream:write(string.format("       **%s** |br| %s\n",
+                                  identifier, type_details))
+      ostream:write(string.format("     - ``%s``\n", default))
+      ostream:write(string.format("     - %s\n", doc))
+   end
+
+   -- run build_lua_tables with a handler, and just accumulate the tables
+   build_lua_tables(header, field, open)
+end
+
+
+local function copy_file(src_filename, dest_filename)
+   local istream = assert(io.open(src_filename, "r"))
+   local content = istream:read("*a")
+   istream:close()
+
+   local ostream = assert(io.open(dest_filename, "w"))
+   ostream:write(content)
+   ostream:close()
+end
+
+
+-- generate .rst files from wtk headers, and copy in irep-types.rst
+-- to go along with them.
+local function generate_rst()
+   for _, header in ipairs(wkt_headers) do
+      local filename = header:match("/?wkt_([^%.]*)%.h$")
+      filename = string.format("%s.rst", filename)
+
+      local ostream = assert(io.open(filename, "w"))
+      print(string.format("Generating %s", filename))
+      generate_rst_file(header, ostream)
+      ostream:close()
+   end
+
+   -- read irep-types.rst from the irep directory
+   local types_filename = script_dir().."/../docs/irep_types.rst"
+   print(string.format("Creating irep_types.rst"))
+   copy_file(types_filename, "irep_types.rst")
+end
+
+---
+--- Functions for generating wkt-index libraries.
+---
+local function generate_index()
+   generate_includes(io.output())
+
+   -- first elements in the string table are from tmap
+   for k,v in pairs(tmap) do
+      add2stbl(v)
+   end
+   process_headers()
+
+   -- structures from ir_index.h are used in the tables below.
+   print('#include "ir_index.h"')
+   print()
+
+   -- Q, str, O, S are used only in the generated output, and they
+   -- probably shouldn't be exposed outside irep.
+   print("#define Q(s) str(s)")
+   print("#define str(x) #x")
+   print("#define O(a,b) offsetof(a,b)")
+   print("#define S(a) sizeof(a)")
+   print()
+
+   -- offset tables for tables and sub-tables
+   generate_string_table()
+   generate_element_tables()
+
+   -- top-level tables go in this index, which is where ir_read starts
+   -- looking when it translates irep expressions.
+   generate_table_pointers()
+   generate_wkt_table()
+end
+
+
+--
+-- Main script execution starts here
+--
+parse_args()
+
+generators = {
+   ["index"] = generate_index,
+   ["fortran"] = generate_fortran,
+   ["lua"] = generate_lua,
+   ["rst"] = generate_rst,
+}
+
+-- run the generator for the mode
+generators[mode]()
