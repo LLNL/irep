@@ -25,7 +25,7 @@
 #   FFLAGS:   Compiler flags for Fortran.
 #   CPPFLAGS: Flags for the C preprocessor.
 #
-# You can use these variables to inject system Lua configuration. 
+# You can use these variables to inject system Lua configuration.
 # You can use these in makefiles that import wkt.mk.
 #
 #   LUA_INCLUDE:   path to directory containing lua.h
@@ -56,9 +56,8 @@ LUA_LIBRARIES = -L$(LUA_ROOT)/lib -llua
 # find location of this makefile so we can find irep tools
 irep_dir := $(dir $(lastword $(MAKEFILE_LIST)))
 
-# ensure generator can find headers from irep
-CPPFLAGS += -I$(irep_dir)
-CPPFLAGS += $(LUA_INCLUDE)
+# ensure generator can find lua and headers from irep
+CPPFLAGS += $(LUA_INCLUDE) -I$(irep_dir) -I.
 export CPPFLAGS
 
 # utility program for generating code from wkt.h files
@@ -66,8 +65,8 @@ irep_generate = $(irep_dir)/bin/irep-generate
 
 # Rules for compiling C and Forran files -- note that the appropriate
 # IREP -D flag must be set for files that include IREP headers.
-COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -DIREP_LANG_C       -I$(irep_dir) -I.
-COMPILE.f = $(FC) $(FFLAGS) $(CPPFLAGS) -DIREP_LANG_FORTRAN -I$(irep_dir) -I.
+COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -DIREP_LANG_C
+COMPILE.f = $(FC) $(FFLAGS) $(CPPFLAGS) -DIREP_LANG_FORTRAN
 %.o: %.c       ; $(COMPILE.c) -c $<
 %.o %.mod: %.f ; $(COMPILE.f) -c $<
 

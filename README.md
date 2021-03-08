@@ -24,10 +24,11 @@ To build IREP, run `make` in the root directory. This will create
 IREP has integration for both CMake and gmake-based builds. You can find
 more about how to intgrate IREP into your project here:
 
-* [IREP Build Docs](https://irep.readthedocs.io/en/latest/build.html)
+* [IREP Build Docs](https://irep.readthedocs.io/en/latest/build.html) on ReadTheDocs.
+* [IREP Examples](https://github.com/LLNL/irep/tree/master/examples) in this repository.
 
-There are also example C, C++, and Fortran builds in the `examples/`
-directory. You can build and run them all by running `make test`.
+You can build and run the examples by running running `make test` in the
+root of this repository.
 
 ## Basics
 

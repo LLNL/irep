@@ -24,7 +24,7 @@ test: $(prog)
 
 $(prog): $(obj) $(wkt.lib)
 	$(COMPILE.f) -o $@ $(obj) \
-		$(LUA_INCLUDE) -I. -L$(irep_dir) -L. \
+		-L$(irep_dir) -L. \
 		-Wl,--start-group -lprog-wkt -lIR -lprog-wkt-index -Wl,--end-group \
 		$(LUA_LIBRARIES) -lm -lgfortran -ldl
 

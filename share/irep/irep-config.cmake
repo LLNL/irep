@@ -80,7 +80,11 @@ function(add_wkt_library name)
   add_library("${name}" STATIC ${WKT_FFILES} ${WKT_LIB_GENERATED})
   set_target_properties("${name}" PROPERTIES LINKER_LANGUAGE C)
   target_include_directories(
-    "${name}" PUBLIC ${irep_DIR} ${CMAKE_Fortran_MODULE_DIRECTORY})
+    "${name}" PUBLIC
+    ${irep_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_Fortran_MODULE_DIRECTORY}
+  )
 
   # convert the target name to a typical variable identifier
   # (uppercase, no dashes, etc.)
@@ -144,5 +148,9 @@ function(add_wkt_index_library name)
 
   add_library("${name}" STATIC ${WKT_INDEX_C} ${WKT_INDEX_GENERATED})
   set_target_properties("${name}" PROPERTIES LINKER_LANGUAGE C)
-  target_include_directories("${name}" PUBLIC ${irep_DIR})
+  target_include_directories(
+    "${name}" PUBLIC
+    ${irep_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  )
 endfunction()
