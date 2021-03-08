@@ -44,14 +44,18 @@ FFLAGS = -O2 -g -cpp -ffree-form -ffree-line-length-0 -fbackslash
 # RANLIB can be optionally set
 RANLIB = $(shell command -v ranlib 2> /dev/null || true)
 
+# like $(dir), but remove trailing slash and handle /
+dirname = $(if $(patsubst %/,%,$(dir $(1))),$(patsubst %/,%,$(dir $(1))),/)
+
 # By default, assume lua is the one in PATH, and that its includes are in
 # $lua_root/include and libs are in $lua_root/lib.  Lua varies quite a bit
 # from system to system, so you may need to inject LUA_INCLUDE and
 # LUA_LIBRARIES yourself.
 LUA := $(shell command -v lua 2> /dev/null)
-LUA_ROOT = $(dir $(dir $(LUA)))
-LUA_INCLUDE = -I$(LUA_ROOT)/include
-LUA_LIBRARIES = -L$(LUA_ROOT)/lib -llua
+LUA_ROOT := $(call dirname,$(call dirname,$(LUA)))
+LUA_INCLUDE := -I$(LUA_ROOT)/include
+$(info $(LUA_INCLUDE))
+LUA_LIBRARIES := -L$(LUA_ROOT)/lib -llua
 
 # find location of this makefile so we can find irep tools
 irep_dir := $(dir $(lastword $(MAKEFILE_LIST)))
