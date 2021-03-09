@@ -1,5 +1,6 @@
 # IREP
 
+[![linux builds](https://github.com/LLNL/irep/actions/workflows/linux_build_tests.yaml/badge.svg)](https://github.com/LLNL/irep/actions/workflows/linux_build_tests.yaml)
 [![Documentation Status](https://readthedocs.org/projects/irep/badge/?version=latest)](https://irep.readthedocs.io/en/latest/?badge=latest)
 
 IREP is a tool that enables mixed-language simulation codes to use a
