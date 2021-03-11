@@ -605,6 +605,10 @@ local function _wkt_to_loadable_lua(header)
    os.remove(outfile_name)
    os.remove(tmp_header)
 
+   -- lua is ok with it, but luajit does not like "\ ". Convert the
+   -- escaped spaces back to be compatible with both.
+   text = text:gsub("\\ ", " ")
+
    return text
 end
 
