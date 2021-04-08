@@ -71,7 +71,7 @@ function(add_wkt_library name)
       OUTPUT ${WKT_F}
       DEPENDS ${WKT_H}
       COMMAND
-        cmake -E env CPPFLAGS="${WKT_LIB_CPPFLAGS}"
+        ${CMAKE_COMMAND} -E env CPPFLAGS="${WKT_LIB_CPPFLAGS}"
         ${IREP_GENERATE} --mode fortran ${WKT_H} > ${WKT_F}
       COMMAND_EXPAND_LISTS
     )
@@ -141,7 +141,7 @@ function(add_wkt_index_library name)
     OUTPUT ${WKT_INDEX_C}
     DEPENDS ${WKT_HEADERS}
     COMMAND
-      cmake -E env CPPFLAGS="${WKT_INDEX_CPPFLAGS}"
+      ${CMAKE_COMMAND} -E env CPPFLAGS="${WKT_INDEX_CPPFLAGS}"
       ${IREP_GENERATE} --mode index ${WKT_HEADERS} > ${WKT_INDEX_C}
     COMMAND_EXPAND_LISTS
   )
