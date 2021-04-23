@@ -14,7 +14,7 @@ hand:
 
 .. code-block:: console
 
-   gcc -E -DIREP_LANG_C       wkt_material.h | more
+   gcc -E wkt_material.h | more
    gcc -E -DIREP_LANG_FORTRAN wkt_material.h | more
    gcc -E -DIREP_LANG_LUA     wkt_material.h | more
    gcc -E -DIREP_GENERATE     wkt_material.h | more
@@ -23,6 +23,12 @@ hand:
 In other words, the ``wkt_*`` files produce output that can be read from
 C/C++, Fortran, or RST documentation. The output is similar in meaning,
 although not necessarily identical, in each language.
+
+By default, running a ``wkt`` header through the C preprocessor will generate C
+output. This allows them to be included without any special handling in C and
+C++ code. IREP's tooling (specifically, the ``irep-generate script`` uses the
+``IREP_LANG_*`` macros to generate code in other languages from ``wkt`` headers
+writtein in C.
 
 The Intermediate Representation (IR) is a tool for constructing a set of
 C/C++ and Fortran data structures, and a tool for reading Lua tables into

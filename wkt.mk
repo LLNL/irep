@@ -69,7 +69,7 @@ irep_generate = $(irep_dir)/bin/irep-generate
 
 # Rules for compiling C and Forran files -- note that the appropriate
 # IREP -D flag must be set for files that include IREP headers.
-COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -DIREP_LANG_C
+COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS)
 COMPILE.f = $(FC) $(FFLAGS) $(CPPFLAGS) -DIREP_LANG_FORTRAN
 %.o: %.c       ; $(COMPILE.c) -c $<
 %.o %.mod: %.f ; $(COMPILE.f) -c $<

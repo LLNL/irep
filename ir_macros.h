@@ -56,44 +56,6 @@
 #define Vstructure(T,ID,FB,CB) type(T) :: ID(FB)
 
 // ==================================================================
-// ===========================  C SECTION  ==========================
-// ==================================================================
-#elif defined(IREP_LANG_C)
-#define Doc(a)
-
-#define IR_STR(s) s
-
-#define ir_wkt(T,ID) extern T ID;
-#define Vir_wkt(T,ID,FB,CB) extern T ID[CB];
-
-#define Beg_struct(T) typedef struct T {
-#define End_struct(T) } T;
-
-#if defined(__cplusplus)
-#define BOOLEAN bool
-#else
-#define BOOLEAN _Bool
-#endif
-
-// Scalar double, integer, logical, string.
-#define ir_dbl(ID,DV) double ID;
-#define ir_int(ID,DV) int ID;
-#define ir_log(ID,DV) BOOLEAN ID;
-#define ir_str(ID,LEN,DV) char ID[LEN];
-#define ir_reference(ID) int ID;
-#define ir_ptr(ID) void *ID;
-
-// Vector double, integer, logical, string.
-#define Vir_dbl(ID,NELEM,DV) double ID[NELEM];
-#define Vir_int(ID,NELEM,DV) int ID[NELEM];
-#define Vir_log(ID,NELEM,DV) BOOLEAN ID[NELEM];
-#define Vir_str(ID,LEN,NELEM) char ID[NELEM][LEN];
-
-#define Structure(T,ID) T ID;
-#define Callback(ID,NP,NR) Structure(lua_cb_data, ID)
-#define Vstructure(T,ID,FB,CB) T ID[CB];
-
-// ==================================================================
 // ===========================  LUA SECTION  ========================
 // ==================================================================
 #elif defined(IREP_LANG_LUA)
@@ -154,10 +116,46 @@
 #define Vstructure(T,ID,FB,CB) T_tbl ID T FB
 
 // ==================================================================
-// ===========================  ERROR ===============================
+// ===========================  C SECTION  ==========================
 // ==================================================================
+#else  // no IREP_LANG_C required
+// Earlier versions of IREP required IREP_LANG_C to be defined, but
+// now the default is to generate C. This allows IREP headers to be
+// included without any special defines.
+
+#define Doc(a)
+
+#define IR_STR(s) s
+
+#define ir_wkt(T,ID) extern T ID;
+#define Vir_wkt(T,ID,FB,CB) extern T ID[CB];
+
+#define Beg_struct(T) typedef struct T {
+#define End_struct(T) } T;
+
+#if defined(__cplusplus)
+#define BOOLEAN bool
 #else
-#error No recognized language is defined.
+#define BOOLEAN _Bool
 #endif
 
-#endif
+// Scalar double, integer, logical, string.
+#define ir_dbl(ID,DV) double ID;
+#define ir_int(ID,DV) int ID;
+#define ir_log(ID,DV) BOOLEAN ID;
+#define ir_str(ID,LEN,DV) char ID[LEN];
+#define ir_reference(ID) int ID;
+#define ir_ptr(ID) void *ID;
+
+// Vector double, integer, logical, string.
+#define Vir_dbl(ID,NELEM,DV) double ID[NELEM];
+#define Vir_int(ID,NELEM,DV) int ID[NELEM];
+#define Vir_log(ID,NELEM,DV) BOOLEAN ID[NELEM];
+#define Vir_str(ID,LEN,NELEM) char ID[NELEM][LEN];
+
+#define Structure(T,ID) T ID;
+#define Callback(ID,NP,NR) Structure(lua_cb_data, ID)
+#define Vstructure(T,ID,FB,CB) T ID[CB];
+
+#endif  // defined IREP_LANG_*
+#endif  // ir_macros_h

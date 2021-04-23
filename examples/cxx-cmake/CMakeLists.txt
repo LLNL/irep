@@ -15,7 +15,6 @@ add_wkt_library(prog-wkt wkt_table1.h wkt_table4.h)
 add_wkt_index_library(prog-wkt-index wkt_table1.h wkt_table4.h)
 
 add_executable(cxx_prog cxx_main.cpp)
-target_compile_definitions(cxx_prog PUBLIC -DIREP_LANG_C)
 target_link_libraries(
   cxx_prog
   prog-wkt

@@ -49,7 +49,7 @@ well; they invoke the C and Fortran compilers with a standard set of
 arguments for IREP programs:
 
 ```makefile
-COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -DIREP_LANG_C
+COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS)
 COMPILE.f = $(FC) $(FFLAGS) $(CPPFLAGS) -DIREP_LANG_FORTRAN
 ```
 
@@ -129,7 +129,6 @@ Program creation is somewhat simpler than with `gmake`:
 
 ```cmake
 add_executable(cxx_prog cxx_main.cpp)
-target_compile_definitions(cxx_prog PUBLIC -DIREP_LANG_C)
 target_link_libraries(
   cxx_prog
   prog-wkt
@@ -140,13 +139,10 @@ target_link_libraries(
 )
 ```
 
-Aside from adding `cxx_prog` as an executable, which is straightforward,
-this adds `-DIREP_LANG_C` as a definition for the exeuctable, and it adds
-IREP and lua libraries to the exe as well. `-DIREP_LANG_C` is necessary
-for IREP `wkt_*.h` files to be included in C programs -- it causes the
-preprocessor to translate them to proper `extern struct` declarations. We
-didn't have to do this in `gmake` because it was implicit in the C build
-rule, but CMake is more explicit than `gmake` in this regard.
+Aside from adding `cxx_prog` as an executable, which is straightforward, this
+also adds IREP and lua libraries to the exe. We didn't have to do this in
+`gmake` because it was implicit in the C build rule, but CMake is more explicit
+than `gmake` in this regard.
 
 The libraries linked with `cxx_prog` are essentially the same as those
 from `gmake`. However, `CMake` has no portable

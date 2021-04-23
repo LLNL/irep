@@ -126,8 +126,6 @@ function(add_wkt_index_library name)
 
   # name of single C source file for index library
   set(WKT_INDEX_C "${name}.c")
-  set_source_files_properties(
-    "${WKT_INDEX_C}" PROPERTIES COMPILE_FLAGS -DIREP_LANG_C)
 
   # ensure that CPPFLAGS is set to include lib target properties
   set(incl "$<TARGET_PROPERTY:${name},INCLUDE_DIRECTORIES>")
