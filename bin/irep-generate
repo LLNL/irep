@@ -208,7 +208,11 @@ end
 function execute_command(command)
    local tmpfile = os.tmpname() .. ".out"
    local exit = os.execute(command .. ' > ' .. tmpfile)
-   if exit ~= 0 then
+   local failed = (
+      (_ENV and exit == nil) or  -- lua >= 5.2
+      (not _ENV and exit ~= 0)   -- lua <  5.2
+   )
+   if failed then
       print("Command failed: '" .. command .. "'")
       os.exit(1)
    end
