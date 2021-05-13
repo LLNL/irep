@@ -6,7 +6,7 @@
 cmake_minimum_required(VERSION 3.3)
 project(irep-cxx-test LANGUAGES C CXX Fortran)
 
-find_package(irep REQUIRED HINTS ../..)
+find_package(irep REQUIRED)
 
 find_package(Lua REQUIRED)
 include_directories("${LUA_INCLUDE_DIR}")
