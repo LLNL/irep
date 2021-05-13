@@ -19,13 +19,15 @@ jobs:
         sudo apt-get install -yqq gcc g++ gfortran lua5.1 lua5.1-dev make
     - name: Build IREP
       run: |
-        make CPPFLAGS=-I/usr/include/lua5.1
+        mkdir build && cd build
+        cmake ..
+        make -j8
     - name: C Example
       run: |
-        make -C examples/c LUA_INCLUDE=-I/usr/include/lua5.1 LUA_LIBRARIES="-L/usr/lib/x86_64-linux-gnu -llua5.1"
+        cd examples && make c LUA_INCLUDE=-I/usr/include/lua5.1 LUA_LIBRARIES="-L/usr/lib/x86_64-linux-gnu -llua5.1"
     - name: C++/CMake Example
       run: |
-        make -C examples/cxx-cmake LUA_INCLUDE=-I/usr/include/lua5.1 LUA_LIBRARIES="-L/usr/lib/x86_64-linux-gnu -llua5.1"
+        cd examples && make cxx LUA_INCLUDE=-I/usr/include/lua5.1 LUA_LIBRARIES="-L/usr/lib/x86_64-linux-gnu -llua5.1"
     - name: Fortran Example
       run: |
-        make -C examples/fortran LUA_INCLUDE=-I/usr/include/lua5.1 LUA_LIBRARIES="-L/usr/lib/x86_64-linux-gnu -llua5.1"
+        cd examples && make fortran LUA_INCLUDE=-I/usr/include/lua5.1 LUA_LIBRARIES="-L/usr/lib/x86_64-linux-gnu -llua5.1"

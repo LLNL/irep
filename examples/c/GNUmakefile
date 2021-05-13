@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-include ../../wkt.mk
+include ../irep/share/irep/wkt.mk
 
 # Gnu compilers (gcc, g++, gfortran) require version 4.7.4 or greater.
 
@@ -24,7 +24,7 @@ test: $(prog)
 
 $(prog): $(obj) $(wkt.lib)
 	$(COMPILE.c) -o $@ $(obj) \
-		-L$(irep_dir) -L. \
+		-L$(irep_dir)/lib -L. \
 		-Wl,--start-group -lprog-wkt -lIR -lprog-wkt-index -Wl,--end-group \
 		$(LUA_LIBRARIES) -lm -lgfortran -ldl
 
