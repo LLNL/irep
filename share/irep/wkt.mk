@@ -58,10 +58,10 @@ $(info $(LUA_INCLUDE))
 LUA_LIBRARIES := -L$(LUA_ROOT)/lib -llua
 
 # find location of this makefile so we can find irep tools
-irep_dir := $(dir $(lastword $(MAKEFILE_LIST)))
+irep_dir := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 
 # ensure generator can find lua and headers from irep
-CPPFLAGS += $(LUA_INCLUDE) -I$(irep_dir) -I.
+CPPFLAGS += $(LUA_INCLUDE) -I$(irep_dir)/include -I.
 export CPPFLAGS
 
 # utility program for generating code from wkt.h files
