@@ -10,10 +10,10 @@ get_filename_component(irep_DIR ${CMAKE_CURRENT_LIST_DIR}/../.. ABSOLUTE)
 set(IREP_GENERATE ${irep_DIR}/bin/irep-generate)
 
 # location of the irep-generate executable
-set(IREP_LIBRARIES ${irep_DIR}/libIR.a)
+set(IREP_LIBRARIES ${irep_DIR}/lib/libIR.a)
 
 # location of the irep-generate executable
-set(IREP_INCLUDE_DIR ${irep_DIR})
+set(IREP_INCLUDE_DIR ${irep_DIR}/include)
 
 # add_wkt_library()
 #
@@ -81,9 +81,9 @@ function(add_wkt_library name)
   set_target_properties("${name}" PROPERTIES LINKER_LANGUAGE C)
   target_include_directories(
     "${name}" PUBLIC
-    ${irep_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${IREP_INCLUDE_DIR}
     ${CMAKE_Fortran_MODULE_DIRECTORY}
+    ${CMAKE_CURRENT_SOURCE_DIR}
   )
 
   # convert the target name to a typical variable identifier
@@ -148,7 +148,8 @@ function(add_wkt_index_library name)
   set_target_properties("${name}" PROPERTIES LINKER_LANGUAGE C)
   target_include_directories(
     "${name}" PUBLIC
-    ${irep_DIR}
+    ${IREP_INCLUDE_DIR}
+    ${CMAKE_Fortran_MODULE_DIRECTORY}
     ${CMAKE_CURRENT_SOURCE_DIR}
   )
 endfunction()
