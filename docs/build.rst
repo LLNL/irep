@@ -152,7 +152,7 @@ Assume that ``irep.root`` is set to the path to your IREP installation:
 .. code-block:: makefile
 
     # include this file to use IREP's gmake integration
-    include $(irep.root)/wkt.mk
+    include $(irep.root)/share/irep/wkt.mk
 
     # define the libraries you want with -wkt.a and -wkt-index.a suffixes
     all: libapp-wkt.a libapp-wkt-index.a
