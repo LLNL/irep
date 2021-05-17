@@ -16,7 +16,7 @@ closely. Specifically, they do this to build a WKT library and a WKT
 index library:
 
 ```makefile
-include ../../wkt.mk
+include ../../share/irep/wkt.mk
 wkt.lib = libprog-wkt.a libprog-wkt-index.a
 prog.wkt_src = $(wildcard wkt_*.h)
 prog.wkt_index_src = $(prog.wkt_src)

@@ -67,7 +67,7 @@ install(
 # Install libIR.a in lib dir
 install(
     TARGETS IR
-    DESTINATION  ${CMAKE_INSTALL_PREFIX}/lib
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
 )
 
 # Headers and Fortran modules go in include
@@ -79,7 +79,7 @@ install(
     # fortran modules
     ${CMAKE_Fortran_MODULE_DIRECTORY}/ir_std.mod
     ${CMAKE_Fortran_MODULE_DIRECTORY}/ir_extern.mod
-  DESTINATION  ${CMAKE_INSTALL_PREFIX}/include
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/include
 )
 
 # Install  share/irep/* in share/irep dir
