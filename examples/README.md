@@ -13,10 +13,10 @@ The examples in the `c` and `fotran` subdirectories are `gmake`-based.
 The WKT library builds in these makefiles follow the
 [IREP build documentation](https://irep.readthedocs.io/en/latest/build.html#gnu-make)
 closely. Specifically, they do this to build a WKT library and a WKT
-index library:
+index library. `irep.root` should be set to the path to your IREP installation.
 
 ```makefile
-include ../../share/irep/wkt.mk
+include $(irep.root)/share/irep/wkt.mk
 wkt.lib = libprog-wkt.a libprog-wkt-index.a
 prog.wkt_src = $(wildcard wkt_*.h)
 prog.wkt_index_src = $(prog.wkt_src)
@@ -109,17 +109,18 @@ closely. Specifically, they do this to build a WKT library and a WKT
 index library:
 
 ```
-find_package(irep REQUIRED HINTS ../..)
+find_package(irep REQUIRED)
 add_wkt_library(prog-wkt wkt_table1.h wkt_table4.h)
 add_wkt_index_library(prog-wkt-index wkt_table1.h wkt_table4.h)
 ```
 
 ### Compile and link details
 
-The first thing here is to call `find_package(irep)` -- it's marked
-`REQUIRED` because the build depends on it, and `HINTS ../..` here is
-just because the example is within an IREP installaton -- we want it to
-find this IREP in the test environment.
+The first thing here is to call `find_package(irep)`.
+`find_package` will find IREP if you add the irep package to
+`CMAKE_PREFIX_PATH`, e.g. `-DCMAKE_PREFIX_PATH=/path/to/irep`.
+It's marked `REQUIRED` because the build depends on it, we
+want it to find this IREP in the test environment.
 
 The WKT library creation is simple -- it just lists the WKTs in the
 project. If you had more WKT libraries, you would need to ensure that all
