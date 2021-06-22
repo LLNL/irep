@@ -13,9 +13,9 @@ use, intrinsic :: iso_c_binding
 use :: ir_std
 
 #else
+#include "ir_std.h"
 #if defined(__cplusplus)
 namespace irep {
 extern "C" {
 #endif
-#include "ir_std.h"
 #endif
