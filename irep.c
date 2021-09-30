@@ -287,19 +287,25 @@ static int iir_read(lua_State *L,char *lrep,char *lp,void *bp,ir_element *ep) {
       const char *s = lua_tostring(L,-2);
       nlp += snprintf(lp, BSZ+(lrep-lp),  ".%s", s);
       i = find_element(s, ir_ta[ep->ti]);
-      if (i == -1) return Ir_error("No such IREP variable: %s (%s)", s, lrep);
+      if (i == -1) {
+        lua_pop(L, 2);
+        return Ir_error("No such IREP variable: %s (%s)", s, lrep);
+      }
       nep = &ir_ta[ep->ti][i];
       nbp += nep->off;
 
     } else if (lua_type(L,-2) == LUA_TNUMBER) { // Table has numeric keys.
       i = (int)lua_tonumber(L,-2);
       nlp += snprintf(lp, BSZ+(lrep-lp), "[%d]", i);
-      if (i<ep->flb || i>ep->fub)
+      if (i<ep->flb || i>ep->fub) {
+        lua_pop(L, 2);
         return Ir_error("Array bounds exceeded: %s[%d] (%d:%d)",
           lrep,i,ep->flb,ep->fub);
+      }
       nbp += (i - ep->flb)*ep->sz;
 
     } else {
+      lua_pop(L, 2);
       return Ir_error("Expected string or integer key: %s", lrep);
     }
     errcnt += iir_read(L, lrep, nlp, nbp, nep);
