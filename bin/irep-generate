@@ -574,6 +574,7 @@ local function _wkt_to_loadable_lua(header)
       cpp,
       "-DIREP_LANG_LUA",
       "-I" .. script_dir() .. "../",  -- always include from irep and .
+      "-I" .. script_dir() .. "../include",
       "-I.",
       cppflags,
       tmp_header

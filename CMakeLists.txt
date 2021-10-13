@@ -89,3 +89,10 @@ install(
         share/irep/wkt.mk
     DESTINATION ${CMAKE_INSTALL_PREFIX}/share/irep
 )
+
+# Install doc files needed to build docs from an installed irep
+install(
+    FILES
+        docs/irep_types.rst
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/docs
+)
