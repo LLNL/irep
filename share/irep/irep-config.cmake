@@ -82,8 +82,8 @@ function(add_wkt_library name)
   target_include_directories(
     "${name}" PUBLIC
     ${IREP_INCLUDE_DIR}
-    ${CMAKE_Fortran_MODULE_DIRECTORY}
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_Fortran_MODULE_DIRECTORY}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   )
 
   # convert the target name to a typical variable identifier
