@@ -154,11 +154,8 @@ int ir_nret(int npnr) { return npnr/1024 - 9; }
 
 // Read a Lua callback function.
 static int read_cbk(lua_State *L,char *lrep,void *bp,ir_element *ep) {
-  int i, ii, fref = LUA_NOREF, tv = lua_type(L,-1), npnr = ep->len;
+  int i, ii, fref = LUA_NOREF, tv = lua_type(L,-1), npnr = ep->len, base_npnr = ep->len;
   lua_cb_data *cb = (lua_cb_data *)bp;
-
-  // Save the original npnr, which may be overwritten below
-  base_npnr = npnr;
 
   if (tv!=LUA_TNUMBER && tv!=LUA_TTABLE && tv!=LUA_TFUNCTION)
     return Ir_error("Expected function, array, or number: %s", lrep);
@@ -212,6 +209,7 @@ static int read_cbk(lua_State *L,char *lrep,void *bp,ir_element *ep) {
     }
   }
   cb->npnr = npnr;
+  cb->base_npnr = base_npnr;
   Dbg_print("%s.npnr = %d (%d,%d)", lrep, npnr, ir_nprm(npnr),ir_nret(npnr));
   cb->fref = fref;
   Dbg_print("%s.fref = %d", lrep, fref);
