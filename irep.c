@@ -157,6 +157,9 @@ static int read_cbk(lua_State *L,char *lrep,void *bp,ir_element *ep) {
   int i, ii, fref = LUA_NOREF, tv = lua_type(L,-1), npnr = ep->len;
   lua_cb_data *cb = (lua_cb_data *)bp;
 
+  // Save the original npnr, which may be overwritten below
+  base_npnr = npnr;
+
   if (tv!=LUA_TNUMBER && tv!=LUA_TTABLE && tv!=LUA_TFUNCTION)
     return Ir_error("Expected function, array, or number: %s", lrep);
 
