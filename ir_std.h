@@ -22,6 +22,7 @@ extern "C" {
 Beg_struct(lua_cb_data)
   ir_int(fref, -1) // -1 == LUA_REFNIL
   ir_int(npnr, -9) // packed nprm,nret
+  ir_int(base_npnr, -9) // unaltered version
   ir_ptr(data)
 End_struct(lua_cb_data)
 
